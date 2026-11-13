@@ -11,7 +11,7 @@ import {
 } from 'react-icons/md';
 import { FaWhatsapp } from 'react-icons/fa';
 import Swal from 'sweetalert2';
-import { initialEmployees } from '../data/mockData';
+import apiClient from '../services/api';
 
 export default function EmployeeDetails() {
   const { id } = useParams();
@@ -41,139 +41,69 @@ export default function EmployeeDetails() {
   const [overallStatus, setOverallStatus] = useState('Under Review');
   const [adminOverallRemark, setAdminOverallRemark] = useState('');
 
-  // Sample official document library for this employee
-  const [employeeDocs, setEmployeeDocs] = useState([
-    {
-      id: 'doc-1',
-      title: 'Aadhaar Card (Front & Back)',
-      category: 'Identity Proof (KYC)',
-      filename: 'Aadhaar_Card_Verified.pdf',
-      size: '1.4 MB',
-      uploadDate: '01 Nov 2026',
-      status: 'Verified',
-      type: 'pdf'
-    },
-    {
-      id: 'doc-2',
-      title: 'Permanent Account Number (PAN) Card',
-      category: 'Tax & Compliance',
-      filename: 'PAN_Card_Official.pdf',
-      size: '890 KB',
-      uploadDate: '01 Nov 2026',
-      status: 'Verified',
-      type: 'pdf'
-    },
-    {
-      id: 'doc-3',
-      title: 'Cancelled Cheque / Bank Passbook Copy',
-      category: 'Payroll & Banking',
-      filename: 'HDFC_Cancelled_Cheque.jpg',
-      size: '2.1 MB',
-      uploadDate: '01 Nov 2026',
-      status: 'Verified',
-      type: 'image'
-    },
-    {
-      id: 'doc-4',
-      title: 'Graduation Degree / Final Certificate',
-      category: 'Educational',
-      filename: 'BTech_Degree_AKTU.pdf',
-      size: '3.2 MB',
-      uploadDate: '01 Nov 2026',
-      status: 'Verified',
-      type: 'pdf'
-    },
-    {
-      id: 'doc-5',
-      title: 'Class 12th Senior Secondary Marksheet',
-      category: 'Educational',
-      filename: 'CBSE_Class12_Marksheet.pdf',
-      size: '1.1 MB',
-      uploadDate: '01 Nov 2026',
-      status: 'Verified',
-      type: 'pdf'
-    },
-    {
-      id: 'doc-6',
-      title: 'Class 10th High School Certificate',
-      category: 'Educational',
-      filename: 'CBSE_Class10_Marksheet.pdf',
-      size: '950 KB',
-      uploadDate: '01 Nov 2026',
-      status: 'Verified',
-      type: 'pdf'
-    },
-    {
-      id: 'doc-7',
-      title: 'Previous Company Relieving & Experience Letter',
-      category: 'Prior Employment',
-      filename: 'PrevCompany_Relieving_Letter.pdf',
-      size: '1.8 MB',
-      uploadDate: '01 Nov 2026',
-      status: 'Verified',
-      type: 'pdf'
-    },
-    {
-      id: 'doc-8',
-      title: 'Last 3 Months Salary Slips (Consolidated)',
-      category: 'Prior Employment',
-      filename: 'Past_3Months_Payslips.pdf',
-      size: '2.6 MB',
-      uploadDate: '01 Nov 2026',
-      status: 'Verified',
-      type: 'pdf'
-    },
-    {
-      id: 'doc-9',
-      title: 'Signed Non-Disclosure Agreement (NDA) & Consent',
-      category: 'Compliance & Legal',
-      filename: 'AayupOnes_Signed_NDA.pdf',
-      size: '1.2 MB',
-      uploadDate: '02 Nov 2026',
-      status: 'Verified',
-      type: 'pdf'
-    },
-    {
-      id: 'doc-10',
-      title: 'Passport Size Formal Photograph',
-      category: 'Identity Proof (KYC)',
-      filename: 'Formal_Photo_Passport.jpg',
-      size: '640 KB',
-      uploadDate: '01 Nov 2026',
-      status: 'Verified',
-      type: 'image'
-    }
-  ]);
+  // Official document library for this employee (Loaded from API)
+  const [employeeDocs, setEmployeeDocs] = useState([]);
+  const [attendanceList, setAttendanceList] = useState([]);
+  const [leavesData, setLeavesData] = useState({ clTotal: 12, clConsumed: 0, slTotal: 6, slConsumed: 0, wfhDays: 0, history: [] });
+  const [salaryBreakdown, setSalaryBreakdown] = useState(null);
+  const [auditLogs, setAuditLogs] = useState([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Check localStorage first
-    const localEmps = JSON.parse(localStorage.getItem('aayup_employees') || '[]');
-    let emp = localEmps.find(e => e.id === id) || initialEmployees.find(e => e.id === id);
+    // Fast load from Backend API: GET /api/employees/:id
+    const fetchEmployeeDetails = async () => {
+      setLoading(true);
+      try {
+        const res = await apiClient.getEmployeeById(id);
+        if (res && res.success && res.employee) {
+          setEmployee(res.employee);
+          setEmployeeDocs(res.documents || []);
+          setAttendanceList(res.attendance || []);
+          if (res.leaves) setLeavesData(res.leaves);
+          if (res.salaryBreakdown) setSalaryBreakdown(res.salaryBreakdown);
+          if (res.auditLogs) setAuditLogs(res.auditLogs);
+          if (res.employee.onboardingStatus) {
+            setOverallStatus(res.employee.onboardingStatus);
+          }
+          return;
+        }
+      } catch (err) {
+        console.warn('API fetch notice, using local employee fallback:', err.message);
+      } finally {
+        setLoading(false);
+      }
 
-    if (!emp) {
-      emp = {
-        id: id || "AAYUP-EMP-2026-0024",
-        name: "Rahul Kumar",
-        role: "Senior React & Mobile Developer",
-        dept: "Engineering",
-        type: "Full Time",
-        status: "Active",
-        onboardingStatus: "Under Review",
-        onboardingProgress: 95,
-        avatar: "RK",
-        email: "rahul.k@aayup.com",
-        phone: "+91 98765 43210",
-        joined: "14 Jan 2024",
-        manager: "Vikram Singh",
-        salary: "₹ 8,50,000",
-        location: "Lucknow HQ",
-        shift: "General Shift (10:00 AM - 07:00 PM)",
-        onboardingToken: "tok_rahul_9928"
-      };
-    }
+      // Check localStorage or initial mock fallback
+      const localEmps = JSON.parse(localStorage.getItem('aayup_employees') || '[]');
+      let emp = localEmps.find(e => e.id === id);
 
-    setEmployee(emp);
-    setOverallStatus(emp.onboardingStatus || 'Under Review');
+      if (!emp) {
+        emp = {
+          id: id,
+          name: "Employee Dossier",
+          role: "Team Member",
+          dept: "Operations",
+          type: "Full Time",
+          status: "Active",
+          onboardingStatus: "Under Review",
+          onboardingProgress: 0,
+          avatar: "EM",
+          email: "",
+          phone: "",
+          joined: "Recent",
+          manager: "Unassigned",
+          salary: "₹ 0",
+          location: "Headquarters",
+          shift: "General Shift",
+          onboardingToken: ""
+        };
+      }
+
+      setEmployee(emp);
+      setOverallStatus(emp.onboardingStatus || 'Under Review');
+    };
+
+    fetchEmployeeDetails();
   }, [id]);
 
   if (!employee) {
@@ -286,6 +216,8 @@ export default function EmployeeDetails() {
     });
   };
 
+  const submitted = employee?.dossier?.submittedData || {};
+
   return (
     <div className="space-y-6 pb-12">
       {/* Top Header Card */}
@@ -370,13 +302,13 @@ export default function EmployeeDetails() {
           </div>
           <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-100">
             <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">Reporting Manager</span>
-            <p className="text-xs font-bold text-slate-800 mt-0.5">{employee.manager || 'Vikram Singh'}</p>
-            <span className="text-[11px] text-blue-600 font-semibold">Head of Technology</span>
+            <p className="text-xs font-bold text-slate-800 mt-0.5">{employee.manager || 'HR Operations'}</p>
+            <span className="text-[11px] text-blue-600 font-semibold">{employee.dept || 'Operations'}</span>
           </div>
           <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-100">
             <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">Annual CTC</span>
-            <p className="text-xs font-bold text-emerald-600 font-mono mt-0.5">{employee.salary || '₹ 8,50,000'}</p>
-            <span className="text-[11px] text-slate-500">Net: ₹ 62,500/mo</span>
+            <p className="text-xs font-bold text-emerald-600 font-mono mt-0.5">{employee.salary || '₹ 0'}</p>
+            <span className="text-[11px] text-slate-500">Gross: ₹ {salaryBreakdown ? Number(salaryBreakdown.monthlyGross || 0).toLocaleString('en-IN') : '0'}/mo</span>
           </div>
           <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-100">
             <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">Onboarding Progress</span>
@@ -384,12 +316,12 @@ export default function EmployeeDetails() {
               <div className="flex-1 bg-slate-200 h-2 rounded-full overflow-hidden">
                 <div 
                   className="h-full bg-blue-600 rounded-full"
-                  style={{ width: `${employee.onboardingProgress || 95}%` }}
+                  style={{ width: `${employee.onboardingProgress || 0}%` }}
                 />
               </div>
-              <span className="text-xs font-bold text-slate-900">{employee.onboardingProgress || 95}%</span>
+              <span className="text-xs font-bold text-slate-900">{employee.onboardingProgress || 0}%</span>
             </div>
-            <span className="text-[10px] text-slate-500">10 of 10 Dossier Sections Ready</span>
+            <span className="text-[10px] text-slate-500">{employee.onboardingStatus || 'Under Review'}</span>
           </div>
         </div>
       </div>
@@ -430,82 +362,94 @@ export default function EmployeeDetails() {
             <div>
               <div className="flex items-center gap-2">
                 <h3 className="text-base font-extrabold text-slate-900">Submitted Documents Repository</h3>
-                <span className="px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-bold">
-                  All 10 Documents Uploaded
+                <span className="px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200 text-xs font-bold">
+                  {employeeDocs.length} Documents Available
                 </span>
               </div>
               <p className="text-xs text-slate-500 mt-1">
                 KYC Proofs, Educational Marksheets, Prior Experience Certificates & Signed Declarations.
               </p>
             </div>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => {
-                  Swal.fire({
-                    icon: 'success',
-                    title: 'Batch Download Initiated',
-                    text: `Downloading all 10 verified documents as a ZIP archive (${employee.id}_dossier.zip)...`,
-                    timer: 2000,
-                    showConfirmButton: false
-                  });
-                }}
-                className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold flex items-center gap-2 transition shadow-sm"
-              >
-                <MdDownload className="text-base" /> Download Complete ZIP
-              </button>
-            </div>
+            {employeeDocs.length > 0 && (
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    Swal.fire({
+                      icon: 'success',
+                      title: 'Batch Download Initiated',
+                      text: `Downloading all ${employeeDocs.length} verified documents as a ZIP archive (${employee.id}_dossier.zip)...`,
+                      timer: 2000,
+                      showConfirmButton: false
+                    });
+                  }}
+                  className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold flex items-center gap-2 transition shadow-sm"
+                >
+                  <MdDownload className="text-base" /> Download Complete ZIP
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Grid of Documents */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {employeeDocs.map((doc) => (
-              <div 
-                key={doc.id}
-                className="bg-white border border-slate-200 rounded-2xl p-5 hover:border-blue-400 hover:shadow-md transition group flex flex-col justify-between"
-              >
-                <div>
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-600 shrink-0">
-                      {doc.type === 'pdf' ? (
-                        <MdPictureAsPdf className="text-2xl text-rose-600" />
-                      ) : (
-                        <MdDescription className="text-2xl text-blue-600" />
-                      )}
-                    </div>
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1">
-                      <MdCheckCircle className="text-xs" /> {doc.status}
-                    </span>
-                  </div>
-
-                  <div className="mt-3">
-                    <h4 className="text-xs font-extrabold text-slate-900 line-clamp-1">{doc.title}</h4>
-                    <span className="text-[11px] font-semibold text-blue-600 block mt-0.5">{doc.category}</span>
-                    <p className="text-[11px] font-mono text-slate-500 mt-1 truncate">{doc.filename}</p>
-                  </div>
-                </div>
-
-                <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-400">
-                  <span>{doc.size} &bull; {doc.uploadDate}</span>
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => openDocPreview(doc)}
-                      className="px-2.5 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold flex items-center gap-1 transition"
-                      title="Preview Document"
-                    >
-                      <MdVisibility /> View
-                    </button>
-                    <button
-                      onClick={() => downloadDocSimulation(doc)}
-                      className="p-1 rounded-lg text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition"
-                      title="Download File"
-                    >
-                      <MdDownload className="text-base" />
-                    </button>
-                  </div>
-                </div>
+          {employeeDocs.length === 0 ? (
+            <div className="bg-white border border-slate-200 rounded-2xl p-12 text-center">
+              <div className="w-16 h-16 rounded-2xl bg-slate-50 text-slate-400 flex items-center justify-center mx-auto mb-3">
+                <MdFolderCopy className="text-3xl" />
               </div>
-            ))}
-          </div>
+              <h4 className="text-sm font-bold text-slate-700">No Documents Uploaded Yet</h4>
+              <p className="text-xs text-slate-400 mt-1">Submitted documents will appear here once the candidate uploads them in onboarding.</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {employeeDocs.map((doc) => (
+                <div 
+                  key={doc.id}
+                  className="bg-white border border-slate-200 rounded-2xl p-5 hover:border-blue-400 hover:shadow-md transition group flex flex-col justify-between"
+                >
+                  <div>
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-600 shrink-0">
+                        {doc.type === 'pdf' ? (
+                          <MdPictureAsPdf className="text-2xl text-rose-600" />
+                        ) : (
+                          <MdDescription className="text-2xl text-blue-600" />
+                        )}
+                      </div>
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1">
+                        <MdCheckCircle className="text-xs" /> {doc.status}
+                      </span>
+                    </div>
+
+                    <div className="mt-3">
+                      <h4 className="text-xs font-extrabold text-slate-900 line-clamp-1">{doc.title}</h4>
+                      <span className="text-[11px] font-semibold text-blue-600 block mt-0.5">{doc.category}</span>
+                      <p className="text-[11px] font-mono text-slate-500 mt-1 truncate">{doc.filename}</p>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-400">
+                    <span>{doc.size} &bull; {doc.uploadDate}</span>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => openDocPreview(doc)}
+                        className="px-2.5 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold flex items-center gap-1 transition"
+                        title="Preview Document"
+                      >
+                        <MdVisibility /> View
+                      </button>
+                      <button
+                        onClick={() => downloadDocSimulation(doc)}
+                        className="p-1 rounded-lg text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition"
+                        title="Download File"
+                      >
+                        <MdDownload className="text-base" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
@@ -559,35 +503,35 @@ export default function EmployeeDetails() {
               <div className="grid grid-cols-2 gap-3 text-xs">
                 <div>
                   <span className="text-slate-400 block font-medium">Full Name:</span>
-                  <span className="text-slate-900 font-semibold">{employee.name}</span>
+                  <span className="text-slate-900 font-semibold">{submitted.fullName || employee.name}</span>
                 </div>
                 <div>
                   <span className="text-slate-400 block font-medium">Father's Name:</span>
-                  <span className="text-slate-900 font-semibold">Rajendra Kumar</span>
+                  <span className="text-slate-900 font-semibold">{submitted.fatherName || 'Not Provided'}</span>
                 </div>
                 <div>
                   <span className="text-slate-400 block font-medium">Mother's Name:</span>
-                  <span className="text-slate-900 font-semibold">Sunita Devi</span>
+                  <span className="text-slate-900 font-semibold">{submitted.motherName || 'Not Provided'}</span>
                 </div>
                 <div>
                   <span className="text-slate-400 block font-medium">Date of Birth:</span>
-                  <span className="text-slate-900 font-semibold">12 Aug 1998 (28 Yrs)</span>
+                  <span className="text-slate-900 font-semibold">{submitted.dob || employee.dob || 'Not Provided'}</span>
                 </div>
                 <div>
                   <span className="text-slate-400 block font-medium">Gender & Marital:</span>
-                  <span className="text-slate-900 font-semibold">Male &bull; Single</span>
+                  <span className="text-slate-900 font-semibold">{(submitted.gender || 'Male')} &bull; {(submitted.maritalStatus || 'Single')}</span>
                 </div>
                 <div>
                   <span className="text-slate-400 block font-medium">Blood Group:</span>
-                  <span className="text-slate-900 font-semibold">B+ Positive</span>
+                  <span className="text-slate-900 font-semibold">{submitted.bloodGroup || 'Not Specified'}</span>
                 </div>
                 <div>
                   <span className="text-slate-400 block font-medium">Primary Contact:</span>
-                  <span className="text-slate-900 font-semibold">{employee.phone}</span>
+                  <span className="text-slate-900 font-semibold">{submitted.mobileNumber || employee.phone}</span>
                 </div>
                 <div>
                   <span className="text-slate-400 block font-medium">Personal Email:</span>
-                  <span className="text-slate-900 font-semibold">{employee.email}</span>
+                  <span className="text-slate-900 font-semibold">{submitted.personalEmail || employee.email}</span>
                 </div>
               </div>
             </div>
@@ -615,24 +559,24 @@ export default function EmployeeDetails() {
               <div className="space-y-3 text-xs">
                 <div>
                   <span className="text-slate-400 block font-medium">Current Address:</span>
-                  <p className="text-slate-900 font-semibold">Plot 45, Gomti Nagar Extension, Near Riverside Mall, Lucknow, UP - 226010</p>
+                  <p className="text-slate-900 font-semibold">{submitted.currentAddress || 'No current address submitted yet.'}</p>
                 </div>
                 <div>
                   <span className="text-slate-400 block font-medium">Permanent Address:</span>
-                  <p className="text-slate-900 font-semibold">Ward No. 4, Civil Lines, Gorakhpur, UP - 273001</p>
+                  <p className="text-slate-900 font-semibold">{submitted.permanentAddress || submitted.currentAddress || 'No permanent address submitted yet.'}</p>
                 </div>
                 <div className="grid grid-cols-3 gap-2">
                   <div>
                     <span className="text-slate-400 block font-medium">State:</span>
-                    <span className="text-slate-900 font-semibold">Uttar Pradesh</span>
+                    <span className="text-slate-900 font-semibold">{submitted.state || 'Uttar Pradesh'}</span>
                   </div>
                   <div>
                     <span className="text-slate-400 block font-medium">City:</span>
-                    <span className="text-slate-900 font-semibold">Lucknow</span>
+                    <span className="text-slate-900 font-semibold">{submitted.city || 'Lucknow'}</span>
                   </div>
                   <div>
-                    <span className="text-slate-400 block font-medium">Country:</span>
-                    <span className="text-slate-900 font-semibold">India</span>
+                    <span className="text-slate-400 block font-medium">PIN Code:</span>
+                    <span className="text-slate-900 font-semibold">{submitted.pinCode || '------'}</span>
                   </div>
                 </div>
               </div>
@@ -665,7 +609,7 @@ export default function EmployeeDetails() {
                 </div>
                 <div>
                   <span className="text-slate-400 block font-medium">Employment Type:</span>
-                  <span className="text-slate-900 font-semibold">Permanent Full-Time</span>
+                  <span className="text-slate-900 font-semibold">{employee.type || 'Permanent Full-Time'}</span>
                 </div>
                 <div>
                   <span className="text-slate-400 block font-medium">Work Location:</span>
@@ -702,40 +646,19 @@ export default function EmployeeDetails() {
                 <div className="grid grid-cols-2 gap-2">
                   <div>
                     <span className="text-slate-400 block font-medium">Highest Degree:</span>
-                    <span className="text-slate-900 font-semibold">B.Tech (CSE)</span>
+                    <span className="text-slate-900 font-semibold">{submitted.highestQualification || 'Not Submitted'}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400 block font-medium">Course & Branch:</span>
+                    <span className="text-slate-900 font-semibold">{submitted.courseName || submitted.specialization || 'Not Specified'}</span>
                   </div>
                   <div>
                     <span className="text-slate-400 block font-medium">University / Board:</span>
-                    <span className="text-slate-900 font-semibold">AKTU Lucknow</span>
+                    <span className="text-slate-900 font-semibold">{submitted.universityName || 'Not Specified'}</span>
                   </div>
                   <div>
                     <span className="text-slate-400 block font-medium">Passing Year & Score:</span>
-                    <span className="text-slate-900 font-semibold">2021 &bull; 8.42 CGPA</span>
-                  </div>
-                  <div>
-                    <span className="text-slate-400 block font-medium">Education Gap:</span>
-                    <span className="text-emerald-600 font-bold">None</span>
-                  </div>
-                </div>
-
-                <div className="pt-2 border-t border-slate-100 space-y-1.5">
-                  <div className="flex items-center justify-between bg-slate-50 px-3 py-2 rounded-lg border border-slate-100">
-                    <span className="text-slate-700 font-medium">BTech_Degree_AKTU.pdf</span>
-                    <button 
-                      onClick={() => openDocPreview(employeeDocs[3])}
-                      className="text-blue-600 hover:text-blue-800 flex items-center gap-1 text-[11px] font-bold"
-                    >
-                      <MdVisibility /> View Doc
-                    </button>
-                  </div>
-                  <div className="flex items-center justify-between bg-slate-50 px-3 py-2 rounded-lg border border-slate-100">
-                    <span className="text-slate-700 font-medium">CBSE_Class12_Marksheet.pdf</span>
-                    <button 
-                      onClick={() => openDocPreview(employeeDocs[4])}
-                      className="text-blue-600 hover:text-blue-800 flex items-center gap-1 text-[11px] font-bold"
-                    >
-                      <MdVisibility /> View Doc
-                    </button>
+                    <span className="text-slate-900 font-semibold">{submitted.passingYear || '--'} &bull; {submitted.percentageCGPA ? `${submitted.percentageCGPA}` : 'Awaiting Score'}</span>
                   </div>
                 </div>
               </div>
@@ -764,32 +687,27 @@ export default function EmployeeDetails() {
               <div className="grid grid-cols-2 gap-3 text-xs">
                 <div>
                   <span className="text-slate-400 block font-medium">Bank Name:</span>
-                  <span className="text-slate-900 font-semibold">HDFC Bank Ltd</span>
+                  <span className="text-slate-900 font-semibold">{submitted.bankName || 'Not Provided'}</span>
                 </div>
                 <div>
                   <span className="text-slate-400 block font-medium">Account Holder:</span>
-                  <span className="text-slate-900 font-semibold">{employee.name}</span>
+                  <span className="text-slate-900 font-semibold">{submitted.accountHolderName || employee.name}</span>
                 </div>
                 <div>
                   <span className="text-slate-400 block font-medium">Account Number:</span>
-                  <span className="font-mono text-emerald-600 font-bold">50100492817291</span>
+                  <span className="font-mono text-emerald-600 font-bold">{submitted.accountNumber ? `•••• ${submitted.accountNumber.slice(-4)}` : 'Not Provided'}</span>
                 </div>
                 <div>
                   <span className="text-slate-400 block font-medium">IFSC Code:</span>
-                  <span className="font-mono text-slate-900 font-bold">HDFC0001234</span>
+                  <span className="font-mono text-slate-900 font-bold">{submitted.ifscCode || 'Not Provided'}</span>
                 </div>
                 <div>
-                  <span className="text-slate-400 block font-medium">Branch & Type:</span>
-                  <span className="text-slate-900 font-semibold">Hazratganj &bull; Savings</span>
+                  <span className="text-slate-400 block font-medium">Branch Name:</span>
+                  <span className="text-slate-900 font-semibold">{submitted.branchName || 'Not Specified'}</span>
                 </div>
                 <div>
-                  <span className="text-slate-400 block font-medium">Cancelled Cheque:</span>
-                  <span 
-                    onClick={() => openDocPreview(employeeDocs[2])}
-                    className="text-blue-600 font-bold cursor-pointer hover:underline flex items-center gap-1"
-                  >
-                    <MdVisibility /> HDFC_Cancelled_Cheque.jpg
-                  </span>
+                  <span className="text-slate-400 block font-medium">Account Type:</span>
+                  <span className="text-slate-900 font-semibold">{submitted.accountType || 'Savings'}</span>
                 </div>
               </div>
             </div>
@@ -817,31 +735,19 @@ export default function EmployeeDetails() {
               <div className="grid grid-cols-2 gap-3 text-xs">
                 <div>
                   <span className="text-slate-400 block font-medium">Aadhaar Number:</span>
-                  <span className="font-mono text-slate-900 font-bold">XXXX-XXXX-9842</span>
-                  <span 
-                    onClick={() => openDocPreview(employeeDocs[0])}
-                    className="text-blue-600 font-bold cursor-pointer hover:underline text-[11px] block mt-0.5"
-                  >
-                    View Aadhaar Card
-                  </span>
+                  <span className="font-mono text-slate-900 font-bold">{submitted.aadhaarNumber ? `XXXX-XXXX-${submitted.aadhaarNumber.slice(-4)}` : 'Not Submitted'}</span>
                 </div>
                 <div>
                   <span className="text-slate-400 block font-medium">PAN Number:</span>
-                  <span className="font-mono text-slate-900 font-bold">ABCDE9218F</span>
-                  <span 
-                    onClick={() => openDocPreview(employeeDocs[1])}
-                    className="text-blue-600 font-bold cursor-pointer hover:underline text-[11px] block mt-0.5"
-                  >
-                    View PAN Card
-                  </span>
+                  <span className="font-mono text-slate-900 font-bold">{submitted.panNumber || 'Not Submitted'}</span>
                 </div>
                 <div>
                   <span className="text-slate-400 block font-medium">UAN Number:</span>
-                  <span className="font-mono text-slate-900">100928374619</span>
+                  <span className="font-mono text-slate-900">{submitted.uanNumber || 'Not Applicable'}</span>
                 </div>
                 <div>
                   <span className="text-slate-400 block font-medium">Nominee Designated:</span>
-                  <span className="text-slate-900 font-semibold">Rajendra Kumar (Father)</span>
+                  <span className="text-slate-900 font-semibold">{submitted.nomineeName ? `${submitted.nomineeName} (${submitted.nomineeRelation || 'Nominee'})` : 'None'}</span>
                 </div>
               </div>
             </div>
@@ -879,11 +785,11 @@ export default function EmployeeDetails() {
         <div className="bg-white border border-slate-200 rounded-2xl p-6 space-y-6 shadow-sm">
           <div className="flex items-center justify-between border-b border-slate-100 pb-4">
             <div>
-              <h3 className="text-sm font-extrabold text-slate-900">Attendance Punch Timeline (October 2026)</h3>
-              <p className="text-xs text-slate-500">Shift: General Shift (10:00 AM - 07:00 PM) &bull; Bio-metric & Mobile App Punches</p>
+              <h3 className="text-sm font-extrabold text-slate-900">Attendance Punch Timeline</h3>
+              <p className="text-xs text-slate-500">Shift: {employee.shift || 'General Shift'} &bull; Bio-metric & Mobile App Punches</p>
             </div>
             <span className="text-xs font-bold px-3 py-1 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-lg">
-              96.2% On-Time Ratio
+              {attendanceList.length > 0 ? `${attendanceList.length} Logs Recorded` : '0 Logs'}
             </span>
           </div>
 
@@ -900,26 +806,28 @@ export default function EmployeeDetails() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {[
-                  { date: 'Today (03 Nov)', in: '09:54 AM', out: '--:--', hrs: '7h 12m', status: 'Present', src: 'AayupOnes Mobile App' },
-                  { date: '02 Nov 2026', in: '10:02 AM', out: '07:15 PM', hrs: '8h 43m', status: 'Present', src: 'Office Biometric' },
-                  { date: '01 Nov 2026', in: '09:48 AM', out: '07:05 PM', hrs: '9h 17m', status: 'Present', src: 'Office Biometric' },
-                  { date: '31 Oct 2026', in: '10:15 AM', out: '07:30 PM', hrs: '8h 45m', status: 'Present (Late 15m)', src: 'AayupOnes Mobile App' },
-                  { date: '30 Oct 2026', in: '09:50 AM', out: '07:10 PM', hrs: '9h 00m', status: 'Present', src: 'Office Biometric' },
-                ].map((row, idx) => (
-                  <tr key={idx} className="hover:bg-slate-50 transition">
-                    <td className="py-3 px-4 font-semibold text-slate-900">{row.date}</td>
-                    <td className="py-3 px-4 font-mono text-emerald-600 font-bold">{row.in}</td>
-                    <td className="py-3 px-4 font-mono text-slate-500">{row.out}</td>
-                    <td className="py-3 px-4 font-mono font-bold text-slate-900">{row.hrs}</td>
-                    <td className="py-3 px-4">
-                      <span className="px-2 py-0.5 rounded-full text-[10px] bg-emerald-50 text-emerald-700 border border-emerald-200 font-bold">
-                        {row.status}
-                      </span>
+                {attendanceList.length === 0 ? (
+                  <tr>
+                    <td colSpan="6" className="py-8 text-center text-slate-400 font-medium">
+                      No attendance punch records found for this employee.
                     </td>
-                    <td className="py-3 px-4 text-slate-500">{row.src}</td>
                   </tr>
-                ))}
+                ) : (
+                  attendanceList.map((row, idx) => (
+                    <tr key={idx} className="hover:bg-slate-50 transition">
+                      <td className="py-3 px-4 font-semibold text-slate-900">{row.date}</td>
+                      <td className="py-3 px-4 font-mono text-emerald-600 font-bold">{row.in}</td>
+                      <td className="py-3 px-4 font-mono text-slate-500">{row.out}</td>
+                      <td className="py-3 px-4 font-mono font-bold text-slate-900">{row.hrs}</td>
+                      <td className="py-3 px-4">
+                        <span className="px-2 py-0.5 rounded-full text-[10px] bg-emerald-50 text-emerald-700 border border-emerald-200 font-bold">
+                          {row.status}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4 text-slate-500">{row.src}</td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>
@@ -932,19 +840,38 @@ export default function EmployeeDetails() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
               <span className="text-xs text-slate-500 block font-bold uppercase tracking-wider">Casual Leaves (CL)</span>
-              <p className="text-2xl font-black text-slate-900 mt-1">8 / 12</p>
-              <span className="text-[11px] text-slate-500">4 Consumed this fiscal year</span>
+              <p className="text-2xl font-black text-slate-900 mt-1">{leavesData.clTotal - leavesData.clConsumed} / {leavesData.clTotal}</p>
+              <span className="text-[11px] text-slate-500">{leavesData.clConsumed} Consumed this fiscal year</span>
             </div>
             <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
               <span className="text-xs text-slate-500 block font-bold uppercase tracking-wider">Sick Leaves (SL)</span>
-              <p className="text-2xl font-black text-slate-900 mt-1">6 / 6</p>
-              <span className="text-[11px] text-slate-500">0 Consumed this fiscal year</span>
+              <p className="text-2xl font-black text-slate-900 mt-1">{leavesData.slTotal - leavesData.slConsumed} / {leavesData.slTotal}</p>
+              <span className="text-[11px] text-slate-500">{leavesData.slConsumed} Consumed this fiscal year</span>
             </div>
             <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
               <span className="text-xs text-slate-500 block font-bold uppercase tracking-wider">Work From Home (WFH)</span>
-              <p className="text-2xl font-black text-blue-600 mt-1">14 Days</p>
-              <span className="text-[11px] text-slate-500">Monthly quota: 2 days</span>
+              <p className="text-2xl font-black text-blue-600 mt-1">{leavesData.wfhDays} Days</p>
+              <span className="text-[11px] text-slate-500">Approved WFH requests</span>
             </div>
+          </div>
+
+          <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
+            <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Leave History</h4>
+            {leavesData.history && leavesData.history.length > 0 ? (
+              <div className="divide-y divide-slate-100 text-xs">
+                {leavesData.history.map((l) => (
+                  <div key={l.id} className="py-2.5 flex items-center justify-between">
+                    <div>
+                      <span className="font-bold text-slate-800">{l.type} ({l.days} Day{l.days > 1 ? 's' : ''})</span>
+                      <p className="text-slate-500 text-[11px]">{l.from} to {l.to} &bull; {l.reason}</p>
+                    </div>
+                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200">{l.status}</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-slate-400">No leaves applied by this employee.</p>
+            )}
           </div>
         </div>
       )}
@@ -955,7 +882,9 @@ export default function EmployeeDetails() {
           <div className="flex items-center justify-between border-b border-slate-100 pb-4">
             <div>
               <h3 className="text-sm font-extrabold text-slate-900">Monthly CTC & Salary Breakdown</h3>
-              <p className="text-xs text-slate-500">Annual Package: ₹ 8,50,000 &bull; Direct Deposit: HDFC Bank</p>
+              <p className="text-xs text-slate-500">
+                Annual Package: ₹ {salaryBreakdown ? Number(salaryBreakdown.annualCTC || 0).toLocaleString('en-IN') : '0'} &bull; Direct Deposit
+              </p>
             </div>
             <Link
               to="/payroll"
@@ -970,19 +899,19 @@ export default function EmployeeDetails() {
               <h4 className="text-xs font-black text-emerald-900 uppercase tracking-wider">Earnings (Monthly)</h4>
               <div className="flex justify-between py-1.5 border-b border-emerald-200">
                 <span className="text-slate-700 font-medium">Basic Salary (50% CTC)</span>
-                <span className="font-mono text-slate-900 font-bold">₹ 35,417</span>
+                <span className="font-mono text-slate-900 font-bold">₹ {salaryBreakdown ? Number(salaryBreakdown.basic || 0).toLocaleString('en-IN') : '0'}</span>
               </div>
               <div className="flex justify-between py-1.5 border-b border-emerald-200">
                 <span className="text-slate-700 font-medium">House Rent Allowance (HRA 40%)</span>
-                <span className="font-mono text-slate-900 font-bold">₹ 14,167</span>
+                <span className="font-mono text-slate-900 font-bold">₹ {salaryBreakdown ? Number(salaryBreakdown.hra || 0).toLocaleString('en-IN') : '0'}</span>
               </div>
               <div className="flex justify-between py-1.5 border-b border-emerald-200">
                 <span className="text-slate-700 font-medium">Special & Performance Allowance</span>
-                <span className="font-mono text-slate-900 font-bold">₹ 15,250</span>
+                <span className="font-mono text-slate-900 font-bold">₹ {salaryBreakdown ? Number(salaryBreakdown.special || 0).toLocaleString('en-IN') : '0'}</span>
               </div>
               <div className="flex justify-between py-1.5 font-black text-emerald-950 pt-2">
                 <span>Gross Earnings:</span>
-                <span className="font-mono text-emerald-700 text-sm">₹ 70,834</span>
+                <span className="font-mono text-emerald-700 text-sm">₹ {salaryBreakdown ? Number(salaryBreakdown.gross || 0).toLocaleString('en-IN') : '0'}</span>
               </div>
             </div>
 
@@ -990,19 +919,19 @@ export default function EmployeeDetails() {
               <h4 className="text-xs font-black text-rose-900 uppercase tracking-wider">Statutory Deductions</h4>
               <div className="flex justify-between py-1.5 border-b border-rose-200">
                 <span className="text-slate-700 font-medium">Provident Fund (Employee 12%)</span>
-                <span className="font-mono text-rose-600 font-bold">₹ 4,250</span>
+                <span className="font-mono text-rose-600 font-bold">₹ {salaryBreakdown ? Number(salaryBreakdown.pf || 0).toLocaleString('en-IN') : '0'}</span>
               </div>
               <div className="flex justify-between py-1.5 border-b border-rose-200">
                 <span className="text-slate-700 font-medium">Professional Tax (PT)</span>
-                <span className="font-mono text-slate-900 font-bold">₹ 200</span>
+                <span className="font-mono text-slate-900 font-bold">₹ {salaryBreakdown ? Number(salaryBreakdown.pt || 0).toLocaleString('en-IN') : '0'}</span>
               </div>
               <div className="flex justify-between py-1.5 border-b border-rose-200">
                 <span className="text-slate-700 font-medium">TDS / Income Tax Estimate</span>
-                <span className="font-mono text-slate-900 font-bold">₹ 3,884</span>
+                <span className="font-mono text-slate-900 font-bold">₹ {salaryBreakdown ? Number(salaryBreakdown.tds || 0).toLocaleString('en-IN') : '0'}</span>
               </div>
               <div className="flex justify-between py-1.5 font-black text-rose-950 pt-2">
                 <span>Net In-Hand Salary:</span>
-                <span className="font-mono text-emerald-700 text-sm">₹ 62,500</span>
+                <span className="font-mono text-emerald-700 text-sm">₹ {salaryBreakdown ? Number(salaryBreakdown.net || 0).toLocaleString('en-IN') : '0'}</span>
               </div>
             </div>
           </div>
@@ -1014,23 +943,22 @@ export default function EmployeeDetails() {
         <div className="bg-white border border-slate-200 rounded-2xl p-6 space-y-4 shadow-sm">
           <h3 className="text-sm font-extrabold text-slate-900 border-b border-slate-100 pb-3">Lifecycle & Audit Trail</h3>
           <div className="space-y-3 text-xs">
-            {[
-              { time: 'Today 04:15 PM', event: 'Dossier Reviewed by HR Operations', detail: 'Verified 10 sections and educational documents.' },
-              { time: 'Today 01:20 PM', event: 'Onboarding Application Submitted by Employee', detail: 'Transmitted from IP 103.24.88.19 with digital consent signature.' },
-              { time: '01 Nov 06:40 PM', event: 'Secure Onboarding Magic Link Created & Shared', detail: 'Generated token tok_rahul_9928 and dispatched via WhatsApp.' },
-              { time: '01 Nov 06:30 PM', event: 'Initial Employee Registration Created by Admin', detail: 'Generated ID AAYUP-EMP-2026-0024 with General Shift allocation.' },
-            ].map((log, idx) => (
-              <div key={idx} className="flex items-start gap-3 p-3.5 bg-slate-50 rounded-xl border border-slate-100">
-                <div className="w-2.5 h-2.5 rounded-full bg-blue-600 mt-1 shrink-0" />
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="font-bold text-slate-900">{log.event}</span>
-                    <span className="text-[10px] text-slate-400 font-mono">&bull; {log.time}</span>
+            {auditLogs && auditLogs.length > 0 ? (
+              auditLogs.map((log, idx) => (
+                <div key={idx} className="flex items-start gap-3 p-3.5 bg-slate-50 rounded-xl border border-slate-100">
+                  <div className="w-2.5 h-2.5 rounded-full bg-blue-600 mt-1 shrink-0" />
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-slate-900">{log.event}</span>
+                      <span className="text-[10px] text-slate-400 font-mono">&bull; {log.time}</span>
+                    </div>
+                    <p className="text-slate-600 mt-0.5">{log.detail}</p>
                   </div>
-                  <p className="text-slate-600 mt-0.5">{log.detail}</p>
                 </div>
-              </div>
-            ))}
+              ))
+            ) : (
+              <p className="text-xs text-slate-400 py-4">No audit logs recorded for this employee yet.</p>
+            )}
           </div>
         </div>
       )}

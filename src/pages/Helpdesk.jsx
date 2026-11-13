@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
   MdHeadsetMic, 
   MdSearch, 
@@ -15,150 +15,86 @@ import {
   MdCheck,
   MdClose,
   MdTune,
-  MdDevices
+  MdDevices,
+  MdRefresh
 } from 'react-icons/md';
-import { showSuccessToast } from '../utils/alerts';
+import { showSuccessToast, showErrorToast } from '../utils/alerts';
 import Swal from 'sweetalert2';
+import apiClient from '../services/api';
 
 const Helpdesk = () => {
   const [activeTab, setActiveTab] = useState('tickets'); // 'tickets' | 'assets'
-  const [tickets, setTickets] = useState([
-    {
-      id: 'TICK-401',
-      emp: 'Sneha Tiwari',
-      dept: 'Design',
-      avatar: 'ST',
-      category: 'IT Hardware & Display',
-      subject: 'External 4K Monitor flickering on HDMI port',
-      priority: 'High',
-      created: '3 hours ago',
-      assignedTo: 'Vikram Singh (IT Lead)',
-      status: 'In Progress'
-    },
-    {
-      id: 'TICK-402',
-      emp: 'Amit Patel',
-      dept: 'QA',
-      avatar: 'AP',
-      category: 'Payroll & Tax Slabs',
-      subject: 'Section 80C health insurance deduction discrepancy',
-      priority: 'Medium',
-      created: 'Yesterday',
-      assignedTo: 'Pooja Verma (HR)',
-      status: 'Open'
-    },
-    {
-      id: 'TICK-403',
-      emp: 'Rohan Saxena',
-      dept: 'Marketing',
-      avatar: 'RS',
-      category: 'Biometric Access Badge',
-      subject: 'RFID access card not recognized at entrance turnstile',
-      priority: 'Urgent',
-      created: '2 days ago',
-      assignedTo: 'Facilities Admin',
-      status: 'Resolved'
-    },
-    {
-      id: 'TICK-404',
-      emp: 'Rahul Kumar',
-      dept: 'Engineering',
-      avatar: 'RK',
-      category: 'IT Asset Upgrade',
-      subject: 'Apple MacBook Pro M2 16GB RAM upgrade request for mobile build emulator',
-      priority: 'High',
-      created: '1 day ago',
-      assignedTo: 'IT Support Desk',
-      status: 'In Progress'
-    }
-  ]);
-
-  // IT Assets Registry
-  const [assets, setAssets] = useState([
-    {
-      assetTag: 'AST-LKO-091',
-      allocatedTo: 'Rahul Kumar',
-      empId: 'AAYUP-EMP-2026-0024',
-      type: 'Laptop (Workstation)',
-      model: 'MacBook Pro 14" (Apple M2 Pro / 16GB / 512GB)',
-      serial: 'C02G9012MD6T',
-      issuedDate: '15 Jan 2024',
-      condition: 'Excellent',
-      status: 'Allocated'
-    },
-    {
-      assetTag: 'AST-LKO-092',
-      allocatedTo: 'Rahul Kumar',
-      empId: 'AAYUP-EMP-2026-0024',
-      type: 'Display Monitor',
-      model: 'Dell UltraSharp 27" 4K USB-C Hub Monitor (U2723QE)',
-      serial: 'CN-0V2819-742',
-      issuedDate: '15 Jan 2024',
-      condition: 'Good',
-      status: 'Allocated'
-    },
-    {
-      assetTag: 'AST-LKO-078',
-      allocatedTo: 'Sneha Tiwari',
-      empId: 'AAYUP-EMP-2026-0031',
-      type: 'Laptop (Workstation)',
-      model: 'MacBook Pro 16" (Apple M3 Max / 32GB)',
-      serial: 'C02K8812ND88',
-      issuedDate: '20 May 2023',
-      condition: 'Excellent',
-      status: 'Allocated'
-    },
-    {
-      assetTag: 'AST-LKO-083',
-      allocatedTo: 'Amit Patel',
-      empId: 'AAYUP-EMP-2026-0019',
-      type: 'Laptop (Workstation)',
-      model: 'ThinkPad T14 Gen 4 (Core i7 / 16GB / 512GB)',
-      serial: 'PF-289129-LKO',
-      issuedDate: '12 Aug 2023',
-      condition: 'Good',
-      status: 'Allocated'
-    }
-  ]);
-
+  const [tickets, setTickets] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedTicket, setSelectedTicket] = useState(null);
-  const pageSize = 5;
+  const pageSize = 6;
+
+  const fetchTickets = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await apiClient.getHelpdeskTickets();
+      if (res && res.success) {
+        setTickets(res.data || []);
+      }
+    } catch (e) {
+      console.error(e);
+      showErrorToast('Failed to load helpdesk tickets.');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchTickets();
+  }, [fetchTickets]);
+
+  // IT Assets Registry
+  const [assets, setAssets] = useState([]);
+
+  const handleResolveTicket = (ticket) => {
+    Swal.fire({
+      title: 'Resolve & Close Ticket?',
+      input: 'textarea',
+      inputLabel: 'Resolution Summary & Remarks',
+      inputPlaceholder: 'e.g. Hardware replacement issued / Query addressed with employee.',
+      showCancelButton: true,
+      confirmButtonColor: '#0066d6',
+      cancelButtonColor: '#94a3b8',
+      confirmButtonText: 'Resolve Ticket',
+      inputValidator: (value) => {
+        if (!value) return 'Please mention a resolution remark!';
+      }
+    }).then(async (result) => {
+      if (result.isConfirmed) {
+        try {
+          await apiClient.updateTicketStatus(ticket.id, {
+            status: 'RESOLVED',
+            remarks: result.value
+          });
+          showSuccessToast(`Ticket ${ticket.ticketId || ticket.id} marked as Resolved!`);
+          fetchTickets();
+        } catch (e) {
+          showErrorToast('Failed to update ticket status.');
+        }
+      }
+    });
+  };
 
   const filteredTickets = tickets.filter((t) => {
+    const s = search.toLowerCase();
     const matchesSearch = 
-      t.emp.toLowerCase().includes(search.toLowerCase()) ||
-      t.subject.toLowerCase().includes(search.toLowerCase()) ||
-      t.id.toLowerCase().includes(search.toLowerCase());
+      (t.emp || '').toLowerCase().includes(s) ||
+      (t.subject || '').toLowerCase().includes(s) ||
+      (t.ticketId || t.id || '').toLowerCase().includes(s);
     const matchesStatus = statusFilter === 'All' || t.status === statusFilter;
     return matchesSearch && matchesStatus;
   });
 
-  const handleResolveTicket = (ticket) => {
-    Swal.fire({
-      title: 'Resolve Ticket?',
-      input: 'textarea',
-      inputLabel: 'Resolution Summary for Employee',
-      inputPlaceholder: 'e.g. HDMI cable replaced at workstation.',
-      showCancelButton: true,
-      confirmButtonColor: '#0066d6',
-      cancelButtonColor: '#94a3b8',
-      confirmButtonText: 'Mark Resolved & Notify App'
-    }).then((result) => {
-      if (result.isConfirmed) {
-        setTickets(prev => prev.map(t => t.id === ticket.id ? { ...t, status: 'Resolved' } : t));
-        Swal.fire({
-          icon: 'success',
-          title: 'Ticket Closed',
-          text: `Notification dispatched to ${ticket.emp} via Mobile App.`,
-          timer: 2000,
-          showConfirmButton: false
-        });
-      }
-    });
-  };
+  const totalPages = Math.ceil(filteredTickets.length / pageSize) || 1;
+  const paginatedTickets = filteredTickets.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
   return (
     <div className="space-y-6">
@@ -292,61 +228,80 @@ const Helpdesk = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {filteredTickets.map((ticket) => (
-                    <tr key={ticket.id} className="hover:bg-slate-50 transition">
-                      <td className="px-6 py-4 font-mono font-bold text-blue-600">{ticket.id}</td>
-                      <td className="px-6 py-4 font-bold text-slate-900 flex items-center gap-2.5">
-                        <span className="w-7 h-7 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center font-black text-[10px]">
-                          {ticket.avatar}
-                        </span>
-                        <div>
-                          <div>{ticket.emp}</div>
-                          <div className="text-[10px] text-slate-400 font-normal">{ticket.dept}</div>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 font-bold text-slate-800">{ticket.category}</td>
-                      <td className="px-6 py-4 text-slate-700 max-w-xs truncate" title={ticket.subject}>
-                        {ticket.subject}
-                      </td>
-                      <td className="px-6 py-4">
-                        <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${
-                          ticket.priority === 'Urgent' ? 'bg-rose-50 text-rose-700 border border-rose-200' :
-                          ticket.priority === 'High' ? 'bg-amber-50 text-amber-700 border border-amber-200' :
-                          'bg-blue-50 text-blue-700 border border-blue-200'
-                        }`}>
-                          {ticket.priority}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 text-slate-600">{ticket.assignedTo}</td>
-                      <td className="px-6 py-4">
-                        <span
-                          className={`px-2.5 py-1 rounded-full text-[10px] font-bold border ${
-                            ticket.status === 'Resolved'
-                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                              : ticket.status === 'In Progress'
-                              ? 'bg-blue-50 text-blue-700 border-blue-200'
-                              : 'bg-amber-50 text-amber-700 border-amber-200'
-                          }`}
-                        >
-                          {ticket.status}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 sticky right-0 bg-white hover:bg-slate-50 shadow-[-8px_0_12px_rgba(0,0,0,0.05)]">
-                        <div className="flex items-center gap-1.5">
-                          {ticket.status !== 'Resolved' ? (
-                            <button
-                              onClick={() => handleResolveTicket(ticket)}
-                              className="px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold rounded-lg transition flex items-center gap-1 text-[11px]"
-                            >
-                              <MdCheck /> Resolve
-                            </button>
-                          ) : (
-                            <span className="text-[11px] text-slate-400 font-medium">Closed</span>
-                          )}
-                        </div>
+                  {loading ? (
+                    <tr>
+                      <td colSpan={8} className="px-6 py-12 text-center text-slate-400 font-medium">
+                        Loading helpdesk tickets from database...
                       </td>
                     </tr>
-                  ))}
+                  ) : paginatedTickets.length === 0 ? (
+                    <tr>
+                      <td colSpan={8} className="px-6 py-12 text-center text-slate-400 font-medium">
+                        No support tickets match current filters.
+                      </td>
+                    </tr>
+                  ) : (
+                    paginatedTickets.map((ticket) => (
+                      <tr key={ticket.id} className="hover:bg-slate-50 transition">
+                        <td className="px-6 py-4 font-mono font-bold text-blue-600">{ticket.ticketId || ticket.id}</td>
+                        <td className="px-6 py-4 font-bold text-slate-900 flex items-center gap-2.5">
+                          <span className="w-7 h-7 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center font-black text-[10px]">
+                            {ticket.avatar || 'EM'}
+                          </span>
+                          <div>
+                            <div>{ticket.emp}</div>
+                            <div className="text-[10px] text-slate-400 font-normal">{ticket.dept}</div>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 font-bold text-slate-800">{ticket.category}</td>
+                        <td className="px-6 py-4 text-slate-700 max-w-xs truncate" title={ticket.subject}>
+                          {ticket.subject}
+                        </td>
+                        <td className="px-6 py-4">
+                          <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${
+                            ticket.priority === 'Urgent' || ticket.priority === 'HIGH' ? 'bg-rose-50 text-rose-700 border border-rose-200' :
+                            ticket.priority === 'High' || ticket.priority === 'MEDIUM' ? 'bg-amber-50 text-amber-700 border border-amber-200' :
+                            'bg-blue-50 text-blue-700 border border-blue-200'
+                          }`}>
+                            {ticket.priority}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 text-slate-600">{ticket.assignedTo}</td>
+                        <td className="px-6 py-4">
+                          <span
+                            className={`px-2.5 py-1 rounded-full text-[10px] font-bold border ${
+                              ticket.status === 'Resolved' || ticket.status === 'RESOLVED'
+                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                : ticket.status === 'In Progress' || ticket.status === 'IN_PROGRESS'
+                                ? 'bg-blue-50 text-blue-700 border-blue-200'
+                                : 'bg-amber-50 text-amber-700 border-amber-200'
+                            }`}
+                          >
+                            {ticket.status}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 sticky right-0 bg-white hover:bg-slate-50 shadow-[-8px_0_12px_rgba(0,0,0,0.05)]">
+                          <div className="flex items-center gap-1.5">
+                            {ticket.status !== 'Resolved' && ticket.status !== 'RESOLVED' ? (
+                              <button
+                                onClick={() => handleResolveTicket(ticket)}
+                                className="px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold rounded-lg transition flex items-center gap-1 text-[11px]"
+                              >
+                                <MdCheck /> Resolve
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => setSelectedTicket(ticket)}
+                                className="px-2.5 py-1 bg-slate-50 hover:bg-slate-100 text-slate-600 font-bold rounded-lg transition flex items-center gap-1 text-[11px]"
+                              >
+                                <MdVisibility /> View
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
                 </tbody>
               </table>
             </div>

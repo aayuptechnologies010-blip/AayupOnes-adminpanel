@@ -6,61 +6,85 @@ import {
   MdVisibility, 
   MdVisibilityOff, 
   MdArrowForward,
-  MdFingerprint,
   MdShield,
-  MdCheckCircle,
   MdPeople,
   MdPayments,
-  MdQueryStats,
-  MdAccessTime
+  MdErrorOutline
 } from 'react-icons/md';
 import { showSuccessToast, showErrorToast } from '../utils/alerts';
+import apiClient from '../services/api';
 
 const Login = () => {
   const navigate = useNavigate();
-  const [empId, setEmpId] = useState('AAYUP-DEV-0024');
-  const [password, setPassword] = useState('temp@1234');
-  const [showPassword, setShowPassword] = useState(false);
-  const [rememberMe, setRememberMe] = useState(true);
-  const [isLoading, setIsLoading] = useState(false);
 
-  const handleLogin = (e) => {
+  // Dynamic user input state (no hardcoded defaults)
+  const [empId, setEmpId] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [rememberMe, setRememberMe] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState({});
+
+  // Client-side Validation
+  const validateForm = () => {
+    const errors = {};
+    const trimmedId = empId.trim();
+
+    if (!trimmedId) {
+      errors.empId = 'Employee ID or Corporate Email is required';
+    } else if (trimmedId.length < 3) {
+      errors.empId = 'Identifier must be at least 3 characters long';
+    }
+
+    if (!password) {
+      errors.password = 'Password is required';
+    } else if (password.length < 4) {
+      errors.password = 'Password must be at least 4 characters long';
+    }
+
+    setFieldErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
+  const handleLogin = async (e) => {
     e.preventDefault();
-    if (!empId || !password) {
-      showErrorToast('Please enter both Employee ID and password');
+
+    if (!validateForm()) {
+      showErrorToast('Please correct the highlighted errors before submitting');
       return;
     }
 
     setIsLoading(true);
+    setFieldErrors({});
 
-    setTimeout(() => {
-      setIsLoading(false);
-      localStorage.setItem('aayup_admin_token', 'mock_secure_token_123');
-      localStorage.setItem('aayup_admin_user', JSON.stringify({
-        name: 'Rahul Kumar',
-        empId: empId,
-        role: 'Corporate HR Administrator',
-        email: 'rahul.k@aayup.com'
-      }));
-      showSuccessToast('Signed in successfully! Welcome to AayupOnes Admin');
-      navigate('/');
-    }, 800);
-  };
+    try {
+      // Connect to Real Backend API (/api/auth/admin/login)
+      const res = await apiClient.adminLogin(empId.trim(), password);
 
-  const handleBiometricSimulate = () => {
-    setIsLoading(true);
-    setTimeout(() => {
+      if (res && res.success && res.token) {
+        // Store Session & Auth Token
+        localStorage.setItem('aayup_admin_token', res.token);
+        localStorage.setItem('aayup_admin_user', JSON.stringify({
+          name: res.user.name,
+          empId: res.user.employeeId,
+          role: res.user.role === 'admin' ? 'Super Administrator' : 'HR Administrator',
+          email: res.user.email,
+          designation: res.user.designation || 'Administrator',
+          department: res.user.department || 'Operations',
+          avatarInitials: res.user.avatarInitials || (res.user.name ? res.user.name.substring(0, 2).toUpperCase() : 'AD')
+        }));
+
+        showSuccessToast(`Welcome back, ${res.user.name}! Administrative session verified.`);
+        navigate('/');
+      } else {
+        throw new Error(res.message || 'Authentication failed. Please verify credentials.');
+      }
+    } catch (err) {
+      console.error('[Admin Login Error]:', err.message);
+      showErrorToast(err.message || 'Server error or invalid credentials. Please try again.');
+    } finally {
       setIsLoading(false);
-      localStorage.setItem('aayup_admin_token', 'mock_secure_biometric_token');
-      localStorage.setItem('aayup_admin_user', JSON.stringify({
-        name: 'Rahul Kumar',
-        empId: 'AAYUP-DEV-0024',
-        role: 'Corporate HR Administrator',
-        email: 'rahul.k@aayup.com'
-      }));
-      showSuccessToast('Biometric verified! Session active.');
-      navigate('/');
-    }, 600);
+    }
   };
 
   return (
@@ -125,7 +149,7 @@ const Login = () => {
         {/* Security Footer */}
         <div className="flex items-center gap-3 text-xs text-slate-400 pt-6 border-t border-slate-800/80">
           <MdShield className="text-emerald-400 text-xl shrink-0" />
-          <span>Aayup Technologies Private Limited • Lucknow Corporate Office</span>
+          <span>Aayup Technologies Private Limited • Enterprise Systems</span>
         </div>
       </div>
 
@@ -144,7 +168,7 @@ const Login = () => {
             <div className="text-xs text-slate-400">Enterprise HRMS Admin Console</div>
           </div>
 
-          {/* Elevated Floating Glassmorphism Form Card */}
+          {/* Form Card */}
           <div className="bg-slate-900/90 backdrop-blur-2xl p-8 sm:p-10 rounded-3xl border border-slate-800/90 shadow-2xl relative overflow-hidden">
             {/* Top Accent Gradient Line */}
             <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-blue-600 via-indigo-500 to-sky-400"></div>
@@ -152,51 +176,74 @@ const Login = () => {
             <div className="mb-6">
               <h2 className="text-2xl font-black text-white tracking-tight">Admin Sign In</h2>
               <p className="text-xs text-slate-400 mt-1">
-                Sign in with your corporate employee ID and password assigned by HR.
+                Enter your administrative credentials to access the operations hub.
               </p>
             </div>
 
-            <form onSubmit={handleLogin} className="space-y-4">
-              {/* Employee ID */}
+            <form onSubmit={handleLogin} noValidate className="space-y-4">
+              {/* Employee ID or Email Input */}
               <div>
-                <label className="block text-xs font-bold text-slate-300 mb-1.5">Employee ID / Email</label>
+                <label className="block text-xs font-bold text-slate-300 mb-1.5">
+                  Employee ID / Corporate Email
+                </label>
                 <div className="relative">
-                  <MdBadge className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-lg" />
+                  <MdBadge className={`absolute left-3.5 top-1/2 -translate-y-1/2 text-lg ${fieldErrors.empId ? 'text-rose-400' : 'text-slate-400'}`} />
                   <input
                     type="text"
-                    required
+                    autoComplete="username"
                     value={empId}
-                    onChange={(e) => setEmpId(e.target.value)}
-                    placeholder="e.g. AAYUP-DEV-0024"
-                    className="w-full pl-10 pr-4 py-2.5 bg-slate-800/80 border border-slate-700 focus:border-blue-500 focus:bg-slate-800 text-white text-sm rounded-xl focus:outline-none transition font-medium placeholder:text-slate-500"
+                    onChange={(e) => {
+                      setEmpId(e.target.value);
+                      if (fieldErrors.empId) setFieldErrors(prev => ({ ...prev, empId: '' }));
+                    }}
+                    placeholder="e.g. AAYUP-ADM-0001 or admin@aayup.com"
+                    className={`w-full pl-10 pr-4 py-2.5 bg-slate-800/80 border ${fieldErrors.empId ? 'border-rose-500/80 focus:border-rose-500' : 'border-slate-700 focus:border-blue-500'} focus:bg-slate-800 text-white text-sm rounded-xl focus:outline-none transition font-medium placeholder:text-slate-500`}
                   />
                 </div>
+                {fieldErrors.empId && (
+                  <p className="flex items-center gap-1 text-[11px] text-rose-400 font-medium mt-1.5">
+                    <MdErrorOutline />
+                    <span>{fieldErrors.empId}</span>
+                  </p>
+                )}
               </div>
 
-              {/* Password */}
+              {/* Password Input */}
               <div>
-                <label className="block text-xs font-bold text-slate-300 mb-1.5">Password</label>
+                <label className="block text-xs font-bold text-slate-300 mb-1.5">
+                  Password
+                </label>
                 <div className="relative">
-                  <MdLockOutline className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-lg" />
+                  <MdLockOutline className={`absolute left-3.5 top-1/2 -translate-y-1/2 text-lg ${fieldErrors.password ? 'text-rose-400' : 'text-slate-400'}`} />
                   <input
                     type={showPassword ? 'text' : 'password'}
-                    required
+                    autoComplete="current-password"
                     value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="Enter corporate password"
-                    className="w-full pl-10 pr-10 py-2.5 bg-slate-800/80 border border-slate-700 focus:border-blue-500 focus:bg-slate-800 text-white text-sm rounded-xl focus:outline-none transition font-medium placeholder:text-slate-500"
+                    onChange={(e) => {
+                      setPassword(e.target.value);
+                      if (fieldErrors.password) setFieldErrors(prev => ({ ...prev, password: '' }));
+                    }}
+                    placeholder="Enter administrative password"
+                    className={`w-full pl-10 pr-10 py-2.5 bg-slate-800/80 border ${fieldErrors.password ? 'border-rose-500/80 focus:border-rose-500' : 'border-slate-700 focus:border-blue-500'} focus:bg-slate-800 text-white text-sm rounded-xl focus:outline-none transition font-medium placeholder:text-slate-500`}
                   />
                   <button
                     type="button"
+                    tabIndex="-1"
                     onClick={() => setShowPassword(!showPassword)}
                     className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200 transition"
                   >
                     {showPassword ? <MdVisibilityOff className="text-lg" /> : <MdVisibility className="text-lg" />}
                   </button>
                 </div>
+                {fieldErrors.password && (
+                  <p className="flex items-center gap-1 text-[11px] text-rose-400 font-medium mt-1.5">
+                    <MdErrorOutline />
+                    <span>{fieldErrors.password}</span>
+                  </p>
+                )}
               </div>
 
-              {/* Remember Me & Forgot Password */}
+              {/* Remember Me & Assistance */}
               <div className="flex items-center justify-between text-xs pt-1">
                 <label className="flex items-center gap-2 cursor-pointer text-slate-300 font-medium select-none">
                   <input
@@ -205,19 +252,19 @@ const Login = () => {
                     onChange={(e) => setRememberMe(e.target.checked)}
                     className="rounded border-slate-700 bg-slate-800 text-blue-600 focus:ring-0"
                   />
-                  <span>Remember session</span>
+                  <span>Keep session active</span>
                 </label>
 
                 <button
                   type="button"
-                  onClick={() => showSuccessToast('Contact HR Security Officer (hr@aayup.com) for password reset token')}
+                  onClick={() => showSuccessToast('Contact Chief Administrator (admin@aayuptechnologies.com) for password resets')}
                   className="text-blue-400 hover:text-blue-300 font-semibold"
                 >
-                  Trouble logging in?
+                  Forgot Password?
                 </button>
               </div>
 
-              {/* Submit Button */}
+              {/* Dynamic Submit Action Button */}
               <button
                 type="submit"
                 disabled={isLoading}
@@ -226,7 +273,7 @@ const Login = () => {
                 {isLoading ? (
                   <span className="flex items-center gap-2">
                     <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
-                    <span>Verifying Credentials...</span>
+                    <span>Authenticating with Database...</span>
                   </span>
                 ) : (
                   <>
@@ -235,23 +282,12 @@ const Login = () => {
                   </>
                 )}
               </button>
-
-              {/* Quick Biometric Simulation */}
-              <button
-                type="button"
-                onClick={handleBiometricSimulate}
-                disabled={isLoading}
-                className="w-full py-2.5 bg-slate-800/60 hover:bg-slate-800 border border-slate-700/80 text-slate-200 text-xs font-bold rounded-xl transition flex items-center justify-center gap-2"
-              >
-                <MdFingerprint className="text-lg text-blue-400" />
-                <span>Quick Sign In with Biometrics</span>
-              </button>
             </form>
 
             {/* Security Footnote */}
             <div className="mt-6 pt-5 border-t border-slate-800/80 flex items-center gap-2.5 text-[11px] text-slate-400">
               <MdShield className="text-emerald-400 text-lg shrink-0" />
-              <span>256-bit encrypted corporate network. Authorized personnel only.</span>
+              <span>Verified 256-bit encrypted corporate network. Authorized personnel only.</span>
             </div>
           </div>
 

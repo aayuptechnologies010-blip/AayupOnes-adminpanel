@@ -14,6 +14,7 @@ const Payslips = lazy(() => import('./pages/Payslips'));
 const Reimbursements = lazy(() => import('./pages/Reimbursements'));
 const Documents = lazy(() => import('./pages/Documents'));
 const Helpdesk = lazy(() => import('./pages/Helpdesk'));
+const Announcements = lazy(() => import('./pages/Announcements'));
 const Profile = lazy(() => import('./pages/Profile'));
 const Settings = lazy(() => import('./pages/Settings'));
 
@@ -34,6 +35,7 @@ function App() {
         <Route path="/reimbursements" element={<Reimbursements />} />
         <Route path="/documents" element={<Documents />} />
         <Route path="/helpdesk" element={<Helpdesk />} />
+        <Route path="/announcements" element={<Announcements />} />
         <Route path="/profile" element={<Profile />} />
         <Route path="/settings" element={<Settings />} />
       </Route>

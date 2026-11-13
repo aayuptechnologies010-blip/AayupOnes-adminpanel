@@ -35,7 +35,6 @@ export const showConfirmDialog = async ({ title, text, confirmButtonText = 'Yes,
     confirmButtonColor: '#0066d6',
     cancelButtonColor: '#ef4444',
     confirmButtonText,
-    borderRadius: '16px',
     customClass: {
       popup: 'rounded-2xl shadow-2xl border border-slate-100',
       title: 'text-lg font-bold text-slate-900',

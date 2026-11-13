@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { 
   MdDashboard, 
@@ -13,20 +13,70 @@ import {
   MdSettings,
   MdPerson,
   MdLogout,
-  MdShield
+  MdShield,
+  MdCampaign
 } from 'react-icons/md';
 import { showConfirmDialog, showSuccessToast } from '../utils/alerts';
+import apiClient from '../services/api';
 
 const Sidebar = () => {
   const navigate = useNavigate();
+  const user = JSON.parse(localStorage.getItem('aayup_admin_user') || '{"name":"Aayup Admin","role":"Super Administrator","avatarInitials":"AA"}');
+  
+  // Dynamic live badges state (synced with MongoDB collections)
+  const [badges, setBadges] = useState({
+    employees: null,
+    approvals: null,
+    reimbursements: null,
+    helpdesk: null
+  });
+
+  useEffect(() => {
+    // Fast fetch live metrics from Database API
+    const fetchLiveBadges = async () => {
+      try {
+        const [empRes, statsRes] = await Promise.all([
+          apiClient.getEmployees({ limit: 1 }).catch(() => null),
+          apiClient.getDashboardStats().catch(() => null)
+        ]);
+
+        const totalEmp = empRes?.counts?.total ?? statsRes?.metrics?.totalHeadcount ?? null;
+        const pendingApprovals = statsRes?.metrics?.pendingApprovals ?? (empRes?.counts?.underReview ?? null);
+        const pendingClaims = statsRes?.metrics?.pendingReimbursements ?? null;
+        const openHelpdesk = statsRes?.metrics?.openHelpdesk ?? null;
+
+        setBadges({
+          employees: totalEmp !== null ? String(totalEmp) : null,
+          approvals: pendingApprovals ? String(pendingApprovals) : null,
+          reimbursements: pendingClaims ? String(pendingClaims) : null,
+          helpdesk: openHelpdesk ? String(openHelpdesk) : null
+        });
+      } catch (err) {
+        console.warn('Sidebar badge live fetch notice:', err.message);
+      }
+    };
+
+    fetchLiveBadges();
+  }, []);
 
   const menuSections = [
     {
       heading: 'CORE WORKSPACE',
       items: [
         { name: 'Dashboard', path: '/', icon: MdDashboard },
-        { name: 'Employees Registry', path: '/employees', icon: MdPeople, badge: '42' },
-        { name: 'Approvals Inbox', path: '/approvals', icon: MdAssignmentTurnedIn, badge: '2', badgeColor: 'bg-amber-500' },
+        { 
+          name: 'Employees Registry', 
+          path: '/employees', 
+          icon: MdPeople, 
+          badge: badges.employees 
+        },
+        { 
+          name: 'Approvals Inbox', 
+          path: '/approvals', 
+          icon: MdAssignmentTurnedIn, 
+          badge: badges.approvals, 
+          badgeColor: 'bg-amber-500' 
+        },
         { name: 'Attendance & Logs', path: '/attendance', icon: MdAccessTime },
       ]
     },
@@ -35,14 +85,27 @@ const Sidebar = () => {
       items: [
         { name: 'Payroll Processing', path: '/payroll', icon: MdPayments },
         { name: 'Salary Payslips', path: '/payslips', icon: MdReceiptLong },
-        { name: 'Reimbursements', path: '/reimbursements', icon: MdCurrencyRupee, badge: '2', badgeColor: 'bg-blue-500' },
+        { 
+          name: 'Reimbursements', 
+          path: '/reimbursements', 
+          icon: MdCurrencyRupee, 
+          badge: badges.reimbursements, 
+          badgeColor: 'bg-blue-500' 
+        },
       ]
     },
     {
       heading: 'ENTERPRISE DESK',
       items: [
+        { name: 'Announcements & Push', path: '/announcements', icon: MdCampaign },
         { name: 'Documents & Policies', path: '/documents', icon: MdFolderCopy },
-        { name: 'Internal Helpdesk', path: '/helpdesk', icon: MdHeadsetMic, badge: '3', badgeColor: 'bg-rose-500' },
+        { 
+          name: 'Internal Helpdesk', 
+          path: '/helpdesk', 
+          icon: MdHeadsetMic, 
+          badge: badges.helpdesk, 
+          badgeColor: 'bg-rose-500' 
+        },
         { name: 'Admin Profile', path: '/profile', icon: MdPerson },
         { name: 'System Settings', path: '/settings', icon: MdSettings },
       ]
@@ -134,11 +197,11 @@ const Sidebar = () => {
         >
           <div className="flex items-center gap-2.5 min-w-0">
             <div className="w-8 h-8 rounded-full bg-blue-500/20 border border-blue-400/40 flex items-center justify-center text-blue-400 font-bold text-xs shrink-0">
-              RK
+              {user.avatarInitials || 'AD'}
             </div>
             <div className="min-w-0">
-              <div className="text-xs font-bold truncate text-slate-200">Rahul Kumar</div>
-              <div className="text-[10.5px] text-slate-400 truncate">HR Administrator</div>
+              <div className="text-xs font-bold truncate text-slate-200">{user.name}</div>
+              <div className="text-[10.5px] text-slate-400 truncate">{user.role}</div>
             </div>
           </div>
           <MdShield className="text-blue-400 text-sm" />

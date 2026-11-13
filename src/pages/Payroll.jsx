@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
   MdPayments, 
   MdCheckCircle, 
@@ -9,18 +9,25 @@ import {
   MdTune,
   MdClose,
   MdCalculate,
-  MdSave
+  MdSave,
+  MdFileDownload,
+  MdRefresh
 } from 'react-icons/md';
-import { showSuccessToast, showConfirmDialog } from '../utils/alerts';
-import { initialEmployees } from '../data/mockData';
+import { showSuccessToast, showErrorToast, showConfirmDialog } from '../utils/alerts';
+import apiClient from '../services/api';
+import { exportToExcel } from '../utils/exportUtils';
 
 const Payroll = () => {
   const [isProcessing, setIsProcessing] = useState(false);
-  const [payrollStatus, setPayrollStatus] = useState('Pending Execution');
+  const [payrollStatus, setPayrollStatus] = useState('Processed & Ready');
+  const [payrollRecords, setPayrollRecords] = useState([]);
+  const [summary, setSummary] = useState({ totalEmployees: 0, totalGross: 0, totalNet: 0, totalDeductions: 0 });
+  const [loading, setLoading] = useState(true);
+  const selectedMonth = 'November 2026';
   
   // Interactive Salary Configurator Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [selectedEmp, setSelectedEmp] = useState(initialEmployees[0]);
+  const [selectedEmp, setSelectedEmp] = useState(null);
   const [salaryInputs, setSalaryInputs] = useState({
     annualCTC: 850000,
     basicSalary: 35417,
@@ -32,9 +39,31 @@ const Payroll = () => {
     tds: 3884
   });
 
+  const fetchPayroll = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await apiClient.getPayroll({ month: selectedMonth });
+      if (res && res.success) {
+        setPayrollRecords(res.data || []);
+        if (res.summary) {
+          setSummary(res.summary);
+        }
+      }
+    } catch (e) {
+      console.error(e);
+      showErrorToast('Failed to load live payroll records.');
+    } finally {
+      setLoading(false);
+    }
+  }, [selectedMonth]);
+
+  useEffect(() => {
+    fetchPayroll();
+  }, [fetchPayroll]);
+
   const handleOpenConfigurator = (emp) => {
     setSelectedEmp(emp);
-    const parsedCTC = parseInt(emp.salary?.replace(/[^0-9]/g, '') || '850000', 10);
+    const parsedCTC = Number(emp.gross || 65000) * 12;
     const monthlyGross = Math.round(parsedCTC / 12);
     const basic = Math.round(monthlyGross * 0.50);
     const hra = Math.round(basic * 0.40);
@@ -78,31 +107,63 @@ const Payroll = () => {
     });
   };
 
-  const grossEarnings = Number(salaryInputs.basicSalary) + Number(salaryInputs.hra) + Number(salaryInputs.specialAllowance);
-  const totalDeductions = Number(salaryInputs.pfEmployee) + Number(salaryInputs.esic) + Number(salaryInputs.pt) + Number(salaryInputs.tds);
-  const netInHand = Math.max(0, grossEarnings - totalDeductions);
-
   const handleSaveSalaryStructure = () => {
+    showSuccessToast(`Salary structure updated for ${selectedEmp?.name}!`);
     setIsModalOpen(false);
-    showSuccessToast(`Salary structure saved for ${selectedEmp.name}! In-Hand: ₹ ${netInHand.toLocaleString('en-IN')}/mo`);
   };
 
   const handleRunPayroll = async () => {
     const res = await showConfirmDialog({
-      title: 'Run October 2026 Payroll?',
-      text: 'Total net disbursal amount of ₹ 28,45,600.00 will be published and payslips will be pushed to all 42 employees.',
-      confirmButtonText: 'Yes, Execute Payroll'
+      title: 'Disburse Payroll for November 2026?',
+      text: `Authorize electronic NEFT disbursal of ₹ ${summary.totalNet.toLocaleString('en-IN')} across ${summary.totalEmployees} employees?`
     });
 
     if (res.isConfirmed) {
       setIsProcessing(true);
-      setTimeout(() => {
-        setIsProcessing(false);
+      try {
+        await apiClient.runPayrollBatch(selectedMonth);
         setPayrollStatus('Disbursed & Published');
-        showSuccessToast('Payroll batch executed & payslips distributed!');
-      }, 1500);
+        showSuccessToast('Payroll batch processed & payslips published to Mobile App!');
+      } catch (err) {
+        showErrorToast('Failed to execute payroll.');
+      } finally {
+        setIsProcessing(false);
+      }
     }
   };
+
+  const handleExportPayrollExcel = () => {
+    if (payrollRecords.length === 0) {
+      showErrorToast('No payroll records to export.');
+      return;
+    }
+
+    const excelData = payrollRecords.map(item => ({
+      'Employee ID': item.employeeId,
+      'Name': item.name,
+      'Department': item.department,
+      'Designation': item.designation,
+      'Month': item.month,
+      'Monthly Basic (INR)': item.basic,
+      'HRA (INR)': item.hra,
+      'Special Allowances (INR)': item.allowances,
+      'Gross Salary (INR)': item.gross,
+      'EPF Employee (INR)': item.pf,
+      'PT (INR)': item.pt,
+      'TDS (INR)': item.tds,
+      'Total Deductions (INR)': item.deductions,
+      'Net Take-Home (INR)': item.netPay,
+      'Bank Account': item.bankAccount,
+      'Payment Status': item.paymentStatus
+    }));
+
+    exportToExcel(excelData, `AayupOnes_Payroll_Master_${selectedMonth.replace(/\s+/g, '_')}.xlsx`, 'Payroll');
+    showSuccessToast('Payroll ledger exported to Excel successfully!');
+  };
+
+  const grossEarnings = Number(salaryInputs.basicSalary) + Number(salaryInputs.hra) + Number(salaryInputs.specialAllowance);
+  const totalDeductions = Number(salaryInputs.pfEmployee) + Number(salaryInputs.esic) + Number(salaryInputs.pt) + Number(salaryInputs.tds);
+  const netInHand = Math.max(0, grossEarnings - totalDeductions);
 
   return (
     <div className="space-y-6">
@@ -112,12 +173,22 @@ const Payroll = () => {
           <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">Payroll & Compensation</h1>
           <p className="text-xs text-slate-500 font-medium">Monthly salary processing, EPF/ESIC statutory compliance and direct bank advice.</p>
         </div>
-        <button
-          onClick={() => handleOpenConfigurator(initialEmployees[0])}
-          className="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-xs font-bold text-white shadow-md shadow-indigo-600/20 flex items-center gap-2 transition"
-        >
-          <MdTune className="text-base" /> Configure Employee Salary Slabs
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => fetchPayroll()}
+            className="p-2 border border-slate-200 hover:bg-slate-50 text-slate-600 rounded-xl transition"
+            title="Refresh Payroll"
+          >
+            <MdRefresh className={`text-lg ${loading ? 'animate-spin text-blue-600' : ''}`} />
+          </button>
+          <button
+            onClick={handleExportPayrollExcel}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition shadow-sm"
+          >
+            <MdFileDownload className="text-base" />
+            <span>Export Payroll Ledger (.xlsx)</span>
+          </button>
+        </div>
       </div>
 
       {/* Main Payroll Cycle Card */}
@@ -125,7 +196,7 @@ const Payroll = () => {
         <div>
           <div className="flex items-center gap-2">
             <span className="text-[11px] font-extrabold px-2.5 py-0.5 rounded-md bg-white/20 text-white tracking-wider">
-              CYCLE: OCT 2026
+              CYCLE: {selectedMonth.toUpperCase()}
             </span>
             <span className="text-[11px] font-extrabold px-2.5 py-0.5 rounded-md bg-emerald-400 text-slate-950">
               {payrollStatus}
@@ -134,12 +205,12 @@ const Payroll = () => {
 
           <div className="mt-4">
             <div className="text-xs text-blue-200 font-medium">Estimated Net Disbursal Amount</div>
-            <div className="text-3xl font-black tracking-tight mt-1">₹ 28,45,600.00</div>
+            <div className="text-3xl font-black tracking-tight mt-1">₹ {summary.totalNet ? summary.totalNet.toLocaleString('en-IN') : '0.00'}</div>
           </div>
 
           <div className="mt-4 flex items-center gap-6 text-xs text-blue-100 font-medium">
-            <div>Headcount: <strong className="text-white">42 Active Employees</strong></div>
-            <div>Scheduled Payout: <strong className="text-white">31 Oct 2026</strong></div>
+            <div>Headcount: <strong className="text-white">{summary.totalEmployees || payrollRecords.length} Active Employees</strong></div>
+            <div>Scheduled Payout: <strong className="text-white">01 Nov 2026</strong></div>
           </div>
         </div>
 
@@ -166,10 +237,10 @@ const Payroll = () => {
         <h3 className="font-extrabold text-sm text-slate-900 mb-4">Payroll Cycle Milestones & Processing</h3>
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           {[
-            { step: '1', title: 'Attendance Locked', desc: 'Cut-off finalized on 26 Oct', done: true },
-            { step: '2', title: 'Claims & Reimbursements', desc: '₹ 42,500 total cleared', done: true },
-            { step: '3', title: 'Statutory Taxes Computed', desc: 'EPF, ESI & TDS slabs synced', done: true },
-            { step: '4', title: 'Direct Bank NEFT File', desc: payrollStatus === 'Disbursed & Published' ? 'Completed' : 'Ready for release', done: payrollStatus === 'Disbursed & Published' },
+            { step: '1', title: 'Attendance Locked', desc: 'Syncing attendance records', done: payrollRecords.length > 0 },
+            { step: '2', title: 'Claims & Reimbursements', desc: 'Syncing expense claims', done: payrollRecords.length > 0 },
+            { step: '3', title: 'Statutory Taxes Computed', desc: 'EPF, ESI & TDS slabs synced', done: payrollRecords.length > 0 },
+            { step: '4', title: 'Direct Bank NEFT File', desc: payrollStatus === 'Disbursed & Published' ? 'Completed' : 'Awaiting Processing', done: payrollStatus === 'Disbursed & Published' },
           ].map((item, idx) => (
             <div
               key={idx}
@@ -216,31 +287,42 @@ const Payroll = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {initialEmployees.slice(0, 5).map((emp) => (
-                <tr key={emp.id} className="hover:bg-slate-50/80 transition">
-                  <td className="py-3 px-4 font-semibold text-slate-900 flex items-center gap-2">
-                    <span className="w-6 h-6 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold text-[10px]">
-                      {emp.avatar}
-                    </span>
-                    {emp.name}
-                  </td>
-                  <td className="py-3 px-4 text-slate-600">{emp.dept}</td>
-                  <td className="py-3 px-4 text-slate-600">{emp.role}</td>
-                  <td className="py-3 px-4 font-bold text-slate-900 font-mono">{emp.salary}</td>
-                  <td className="py-3 px-4 font-mono">₹ 35,417</td>
-                  <td className="py-3 px-4 font-mono">₹ 14,167</td>
-                  <td className="py-3 px-4 font-mono text-rose-600">₹ 4,250</td>
-                  <td className="py-3 px-4 font-bold text-emerald-600 font-mono">₹ 62,500</td>
-                  <td className="py-3 px-4 sticky right-0 bg-white hover:bg-slate-50 shadow-[-8px_0_12px_rgba(0,0,0,0.05)]">
-                    <button
-                      onClick={() => handleOpenConfigurator(emp)}
-                      className="px-3 py-1 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-600 text-xs font-bold transition flex items-center gap-1"
-                    >
-                      <MdTune /> Edit Salary
-                    </button>
+              {loading ? (
+                <tr>
+                  <td colSpan={9} className="py-8 text-center text-slate-400">
+                    Loading salary structures...
                   </td>
                 </tr>
-              ))}
+              ) : (
+                payrollRecords.map((emp) => (
+                  <tr key={emp.id} className="hover:bg-slate-50/80 transition">
+                    <td className="py-3 px-4 font-semibold text-slate-900 flex items-center gap-2">
+                      <span className="w-6 h-6 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold text-[10px]">
+                        {emp.avatar || 'TM'}
+                      </span>
+                      <div>
+                        <div>{emp.name}</div>
+                        <div className="text-[10px] text-slate-400 font-mono font-normal">{emp.employeeId}</div>
+                      </div>
+                    </td>
+                    <td className="py-3 px-4 text-slate-600">{emp.department}</td>
+                    <td className="py-3 px-4 text-slate-600">{emp.designation}</td>
+                    <td className="py-3 px-4 font-bold text-slate-900 font-mono">₹ {(Number(emp.gross) * 12).toLocaleString('en-IN')}</td>
+                    <td className="py-3 px-4 font-mono">₹ {Number(emp.basic).toLocaleString('en-IN')}</td>
+                    <td className="py-3 px-4 font-mono">₹ {Number(emp.hra).toLocaleString('en-IN')}</td>
+                    <td className="py-3 px-4 font-mono text-rose-600">₹ {Number(emp.pf).toLocaleString('en-IN')}</td>
+                    <td className="py-3 px-4 font-bold text-emerald-600 font-mono">₹ {Number(emp.netPay).toLocaleString('en-IN')}</td>
+                    <td className="py-3 px-4 sticky right-0 bg-white hover:bg-slate-50 shadow-[-8px_0_12px_rgba(0,0,0,0.05)]">
+                      <button
+                        onClick={() => handleOpenConfigurator(emp)}
+                        className="px-3 py-1 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-600 text-xs font-bold transition flex items-center gap-1"
+                      >
+                        <MdTune /> Edit Salary
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>

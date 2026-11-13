@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
   MdAccessTime, 
   MdCheckCircle, 
@@ -20,62 +20,53 @@ import {
   MdTune,
   MdRefresh
 } from 'react-icons/md';
-import { initialAttendanceLogs } from '../data/mockData';
-import { showSuccessToast } from '../utils/alerts';
+import { showSuccessToast, showErrorToast } from '../utils/alerts';
 import Swal from 'sweetalert2';
+import apiClient from '../services/api';
+import { exportToExcel } from '../utils/exportUtils';
 
 const Attendance = () => {
   const [activeTab, setActiveTab] = useState('feed'); // 'feed' | 'regularizations' | 'geofence'
+  const [attendanceLogs, setAttendanceLogs] = useState([]);
+  const [stats, setStats] = useState({ totalEmployees: 0, present: 0, late: 0, wfh: 0, absent: 0 });
+  const [loading, setLoading] = useState(true);
+
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
   const [currentPage, setCurrentPage] = useState(1);
-  const pageSize = 5;
+  const pageSize = 8;
+
+  // Fetch Attendance from Live MongoDB API
+  const fetchAttendance = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await apiClient.getAttendance({
+        search,
+        status: statusFilter,
+        page: currentPage,
+        limit: pageSize,
+      });
+
+      if (res && res.success) {
+        setAttendanceLogs(res.data || []);
+        if (res.stats) {
+          setStats(res.stats);
+        }
+      }
+    } catch (err) {
+      console.error('Failed to load attendance logs:', err);
+      showErrorToast('Failed to load attendance logs.');
+    } finally {
+      setLoading(false);
+    }
+  }, [search, statusFilter, currentPage, pageSize]);
+
+  useEffect(() => {
+    fetchAttendance();
+  }, [fetchAttendance]);
 
   // Regularization requests state (Syncs with Mobile App)
-  const [regularizations, setRegularizations] = useState([
-    {
-      id: 'REG-1049',
-      empId: 'AAYUP-EMP-2026-0024',
-      name: 'Rahul Kumar',
-      dept: 'Engineering',
-      date: '23 Oct 2026',
-      actualPunch: '10:05 AM (Late by 35m)',
-      requestedIn: '09:30 AM',
-      requestedOut: '06:30 PM',
-      reason: 'Biometric Machine / Network Glitch',
-      explanation: 'Office biometric scanner was showing offline status at Gomti Nagar ground floor.',
-      status: 'Pending Review',
-      appliedAt: '23 Oct, 10:15 AM'
-    },
-    {
-      id: 'REG-1050',
-      empId: 'AAYUP-EMP-2026-0031',
-      name: 'Sneha Tiwari',
-      dept: 'Design',
-      date: '22 Oct 2026',
-      actualPunch: 'Missed Punch-Out',
-      requestedIn: '09:45 AM',
-      requestedOut: '07:15 PM',
-      reason: 'Client Meeting / On-Duty',
-      explanation: 'Visited client office for UI design sprint review till late evening.',
-      status: 'Pending Review',
-      appliedAt: '23 Oct, 09:10 AM'
-    },
-    {
-      id: 'REG-1048',
-      empId: 'AAYUP-EMP-2026-0019',
-      name: 'Amit Patel',
-      dept: 'Quality Assurance',
-      date: '21 Oct 2026',
-      actualPunch: '10:20 AM',
-      requestedIn: '09:30 AM',
-      requestedOut: '06:30 PM',
-      reason: 'Traffic Delay / Vehicle Breakdown',
-      explanation: 'Metro service was delayed at Hazratganj station.',
-      status: 'Approved',
-      appliedAt: '21 Oct, 11:00 AM'
-    }
-  ]);
+  const [regularizations, setRegularizations] = useState([]);
 
   // Geofence configuration state
   const [geofenceConfig, setGeofenceConfig] = useState({
@@ -138,11 +129,12 @@ const Attendance = () => {
     });
   };
 
-  const filtered = initialAttendanceLogs.filter((log) => {
+  const filtered = attendanceLogs.filter((log) => {
+    const s = search.toLowerCase();
     const matchesSearch = 
-      log.emp.toLowerCase().includes(search.toLowerCase()) ||
-      log.id.toLowerCase().includes(search.toLowerCase()) ||
-      log.mode.toLowerCase().includes(search.toLowerCase());
+      (log.name || '').toLowerCase().includes(s) ||
+      (log.employeeId || '').toLowerCase().includes(s) ||
+      (log.department || '').toLowerCase().includes(s);
     const matchesStatus = statusFilter === 'All' || log.status === statusFilter;
     return matchesSearch && matchesStatus;
   });
@@ -150,8 +142,27 @@ const Attendance = () => {
   const totalPages = Math.ceil(filtered.length / pageSize) || 1;
   const paginatedData = filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
-  const handleExport = () => {
-    showSuccessToast('Monthly Attendance CSV exported successfully.');
+  const handleExportExcel = () => {
+    if (filtered.length === 0) {
+      showErrorToast('No attendance records available to export.');
+      return;
+    }
+
+    const excelData = filtered.map(item => ({
+      'Employee ID': item.employeeId,
+      'Full Name': item.name,
+      'Department': item.department,
+      'Designation': item.designation,
+      'Date': item.date,
+      'Check In': item.checkIn,
+      'Check Out': item.checkOut,
+      'Effective Hours': item.workHours,
+      'Status': item.status,
+      'Punch Device / Location': item.location
+    }));
+
+    exportToExcel(excelData, `Attendance_Timesheet_${new Date().toISOString().slice(0, 10)}.xlsx`, 'Attendance');
+    showSuccessToast('Attendance timesheet exported to Excel successfully!');
   };
 
   return (
@@ -164,11 +175,18 @@ const Attendance = () => {
         </div>
         <div className="flex items-center gap-2">
           <button
-            onClick={handleExport}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-xl text-xs font-bold transition shadow-sm"
+            onClick={() => fetchAttendance()}
+            className="p-2 border border-slate-200 hover:bg-slate-50 text-slate-600 rounded-xl transition"
+            title="Refresh Attendance Feed"
+          >
+            <MdRefresh className={`text-lg ${loading ? 'animate-spin text-blue-600' : ''}`} />
+          </button>
+          <button
+            onClick={handleExportExcel}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition shadow-sm"
           >
             <MdFileDownload className="text-base" />
-            <span>Export Timesheet (CSV)</span>
+            <span>Export Timesheet (.xlsx)</span>
           </button>
         </div>
       </div>
@@ -178,7 +196,7 @@ const Attendance = () => {
         <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between">
           <div>
             <div className="text-xs font-bold text-slate-400 uppercase tracking-wider">In Office</div>
-            <div className="text-2xl font-black text-emerald-600 mt-1">34</div>
+            <div className="text-2xl font-black text-emerald-600 mt-1">{stats.present || 0}</div>
             <div className="text-[11px] text-slate-500 font-medium">Inside 100m Geofence</div>
           </div>
           <div className="p-3 bg-emerald-50 text-emerald-600 rounded-xl">
@@ -188,7 +206,7 @@ const Attendance = () => {
         <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between">
           <div>
             <div className="text-xs font-bold text-slate-400 uppercase tracking-wider">Remote (WFH)</div>
-            <div className="text-2xl font-black text-blue-600 mt-1">4</div>
+            <div className="text-2xl font-black text-blue-600 mt-1">{stats.wfh || 0}</div>
             <div className="text-[11px] text-slate-500 font-medium">Selfie & GPS Verified</div>
           </div>
           <div className="p-3 bg-blue-50 text-blue-600 rounded-xl">
@@ -198,7 +216,7 @@ const Attendance = () => {
         <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between">
           <div>
             <div className="text-xs font-bold text-slate-400 uppercase tracking-wider">Regularizations</div>
-            <div className="text-2xl font-black text-amber-500 mt-1">2 Pending</div>
+            <div className="text-2xl font-black text-amber-500 mt-1">{regularizations.filter(r => r.status === 'Pending Review').length} Pending</div>
             <div className="text-[11px] text-slate-500 font-medium">From Mobile App</div>
           </div>
           <div className="p-3 bg-amber-50 text-amber-500 rounded-xl">
@@ -208,7 +226,7 @@ const Attendance = () => {
         <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between">
           <div>
             <div className="text-xs font-bold text-slate-400 uppercase tracking-wider">Late Arrivals</div>
-            <div className="text-2xl font-black text-rose-500 mt-1">2</div>
+            <div className="text-2xl font-black text-rose-500 mt-1">{stats.late || 0}</div>
             <div className="text-[11px] text-slate-500 font-medium">Beyond 15m Grace</div>
           </div>
           <div className="p-3 bg-rose-50 text-rose-500 rounded-xl">
@@ -316,50 +334,67 @@ const Attendance = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {paginatedData.map((log) => (
-                    <tr key={log.id} className="hover:bg-slate-50 transition">
-                      <td className="px-6 py-4 font-bold text-slate-900 flex items-center gap-3">
-                        <span className="w-8 h-8 rounded-full bg-blue-50 text-blue-600 border border-blue-200 flex items-center justify-center font-extrabold text-xs">
-                          {log.avatar}
-                        </span>
-                        <div>
-                          <div className="text-slate-900 font-extrabold">{log.emp}</div>
-                          <div className="text-[11px] text-slate-400 font-mono font-medium">{log.id}</div>
+                  {loading ? (
+                    <tr>
+                      <td colSpan={6} className="px-6 py-12 text-center text-slate-400 font-medium">
+                        <div className="flex items-center justify-center gap-2">
+                          <MdRefresh className="animate-spin text-xl text-blue-600" />
+                          <span>Loading real-time attendance logs...</span>
                         </div>
-                      </td>
-                      <td className="px-6 py-4 text-slate-600 font-medium">{log.shift}</td>
-                      <td className="px-6 py-4 font-mono font-bold text-slate-900">{log.in}</td>
-                      <td className="px-6 py-4 font-mono font-bold text-slate-900">{log.hours}</td>
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-1.5 font-medium text-slate-700">
-                          {log.mode.includes('Mobile') ? (
-                            <span className="text-blue-600 flex items-center gap-1 font-bold">
-                              <MdDevices /> App (Selfie & GPS)
-                            </span>
-                          ) : (
-                            <span className="text-emerald-600 flex items-center gap-1 font-bold">
-                              <MdFingerprint /> Office Biometric
-                            </span>
-                          )}
-                        </div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <span
-                          className={`px-2.5 py-1 rounded-full text-[10px] font-bold border ${
-                            log.status === 'Present'
-                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                              : log.status === 'WFH'
-                              ? 'bg-blue-50 text-blue-700 border-blue-200'
-                              : log.status === 'Late Arrival'
-                              ? 'bg-rose-50 text-rose-700 border-rose-200'
-                              : 'bg-amber-50 text-amber-700 border-amber-200'
-                          }`}
-                        >
-                          {log.status}
-                        </span>
                       </td>
                     </tr>
-                  ))}
+                  ) : paginatedData.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="px-6 py-12 text-center text-slate-400 font-medium">
+                        No attendance records found.
+                      </td>
+                    </tr>
+                  ) : (
+                    paginatedData.map((log) => (
+                      <tr key={log.id} className="hover:bg-slate-50 transition">
+                        <td className="px-6 py-4 font-bold text-slate-900 flex items-center gap-3">
+                          <span className="w-8 h-8 rounded-full bg-blue-50 text-blue-600 border border-blue-200 flex items-center justify-center font-extrabold text-xs">
+                            {log.avatar || 'EM'}
+                          </span>
+                          <div>
+                            <div className="text-slate-900 font-extrabold">{log.name}</div>
+                            <div className="text-[11px] text-slate-400 font-mono font-medium">{log.employeeId}</div>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 text-slate-600 font-medium">{log.department}</td>
+                        <td className="px-6 py-4 font-mono font-bold text-slate-900">{log.checkIn}</td>
+                        <td className="px-6 py-4 font-mono font-bold text-slate-900">{log.workHours}</td>
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-1.5 font-medium text-slate-700">
+                            {log.device?.includes('App') || log.location?.includes('Geo') ? (
+                              <span className="text-blue-600 flex items-center gap-1 font-bold">
+                                <MdDevices /> Mobile App (GPS)
+                              </span>
+                            ) : (
+                              <span className="text-emerald-600 flex items-center gap-1 font-bold">
+                                <MdFingerprint /> Office Biometric
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <span
+                            className={`px-2.5 py-1 rounded-full text-[10px] font-bold border ${
+                              log.status === 'Present'
+                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                : log.status === 'WFH' || log.status === 'Wfh'
+                                ? 'bg-blue-50 text-blue-700 border-blue-200'
+                                : log.status === 'Late' || log.status === 'Late Arrival'
+                                ? 'bg-rose-50 text-rose-700 border-rose-200'
+                                : 'bg-amber-50 text-amber-700 border-amber-200'
+                            }`}
+                          >
+                            {log.status}
+                          </span>
+                        </td>
+                      </tr>
+                    ))
+                  )}
                 </tbody>
               </table>
             </div>

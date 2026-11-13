@@ -8,6 +8,8 @@ import {
 } from 'react-icons/md';
 
 const Header = () => {
+  const user = JSON.parse(localStorage.getItem('aayup_admin_user') || '{"name":"Aayup Admin","avatarInitials":"AD"}');
+
   const currentDate = new Date().toLocaleDateString('en-US', {
     weekday: 'short',
     day: 'numeric',
@@ -57,9 +59,9 @@ const Header = () => {
         {/* Live Admin Avatar */}
         <div className="flex items-center gap-2 pl-2 border-l border-slate-200">
           <div className="w-8 h-8 rounded-full bg-blue-600 text-white font-bold text-xs flex items-center justify-center">
-            A
+            {user.avatarInitials || (user.name ? user.name[0] : 'A')}
           </div>
-          <span className="hidden sm:inline text-xs font-bold text-slate-700">Aayup Admin</span>
+          <span className="hidden sm:inline text-xs font-bold text-slate-700">{user.name}</span>
         </div>
       </div>
     </header>

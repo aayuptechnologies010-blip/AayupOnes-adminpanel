@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
   MdFolderCopy, 
   MdUploadFile, 
@@ -18,67 +18,56 @@ import {
   MdThumbUp,
   MdComment,
   MdNotificationsActive,
-  MdAddCircleOutline
+  MdAddCircleOutline,
+  MdRefresh
 } from 'react-icons/md';
-import { showSuccessToast, showConfirmDialog } from '../utils/alerts';
+import { showSuccessToast, showErrorToast } from '../utils/alerts';
 import Swal from 'sweetalert2';
+import apiClient from '../services/api';
 
 const Documents = () => {
   const [activeTab, setActiveTab] = useState('feed'); // 'feed' | 'docs' | 'kudos'
+  const [docs, setDocs] = useState([]);
+  const [loadingDocs, setLoadingDocs] = useState(false);
+  const [posts, setPosts] = useState([]);
+  const [loadingPosts, setLoadingPosts] = useState(false);
 
-  // Company Social Wall & Announcements Feed
-  const [posts, setPosts] = useState([
-    {
-      id: 'POST-01',
-      author: 'CEO Office & HR Leadership',
-      authorAvatar: 'HQ',
-      time: 'Today, 10:30 AM',
-      title: 'Diwali 2026 Festive Holidays & Annual Bonus Disbursal 🎉',
-      content: 'Wishing all AayupOnes family members a joyous festive season! The office will observe paid holidays from 31 Oct to 03 Nov. Annual Diwali bonuses have been queued with October payroll.',
-      badge: 'Official HR Circular',
-      likes: 38,
-      commentsCount: 14,
-      priority: 'High',
-      likedByMe: true
-    },
-    {
-      id: 'POST-02',
-      author: 'Vikram Singh (Head of Technology)',
-      authorAvatar: 'VS',
-      time: 'Yesterday',
-      title: 'Kudos to Rahul Kumar for Zero-Downtime Mobile Gateway Release! 🏆',
-      content: 'Huge shoutout to Rahul for working relentlessly on the Flutter biometric and geofencing architecture. The response time has dropped by 45%!',
-      badge: 'Peer Recognition (Kudos)',
-      likes: 29,
-      commentsCount: 8,
-      priority: 'Kudos',
-      likedByMe: true
-    },
-    {
-      id: 'POST-03',
-      author: 'People & Culture Desk',
-      authorAvatar: 'PC',
-      time: '2 days ago',
-      title: 'Welcome 5 New Core Engineers to AayupOnes! 🚀',
-      content: 'Please join us in giving a warm welcome to our newly onboarded team members in Engineering and Design. Drop your wishes below!',
-      badge: 'New Joinee Announcement',
-      likes: 42,
-      commentsCount: 19,
-      priority: 'Normal',
-      likedByMe: false
+  // Fetch Live Corporate Policies from MongoDB
+  const fetchPolicies = useCallback(async () => {
+    setLoadingDocs(true);
+    try {
+      const res = await apiClient.getDocumentsList();
+      if (res && res.success) {
+        setDocs(res.data || []);
+      }
+    } catch (e) {
+      console.error(e);
+      showErrorToast('Failed to load corporate policy repository.');
+    } finally {
+      setLoadingDocs(false);
     }
-  ]);
+  }, []);
 
-  // Corporate Policies
-  const [docs, setDocs] = useState([
-    { id: 'DOC-01', name: 'Aayup Technologies Employee Code of Conduct 2026.pdf', size: '2.4 MB', category: 'HR Policy', date: '01 Jan 2026', downloads: 42, author: 'Pooja Verma (HR)' },
-    { id: 'DOC-02', name: 'POSH Policy & Internal Complaints Committee Redressal.pdf', size: '1.8 MB', category: 'Compliance', date: '15 Jan 2026', downloads: 38, author: 'Legal Counsel' },
-    { id: 'DOC-03', name: 'Leave Policy & Attendance Regularization Rules v3.pdf', size: '980 KB', category: 'Operations', date: '10 Feb 2026', downloads: 40, author: 'HR Ops' },
-    { id: 'DOC-04', name: 'Non-Disclosure Agreement & Proprietary Information Terms.docx', size: '640 KB', category: 'Legal', date: '01 Mar 2026', downloads: 35, author: 'Legal Counsel' },
-    { id: 'DOC-05', name: 'Annual Appraisal & Performance Band Framework 2026.pdf', size: '3.1 MB', category: 'Compensation', date: '01 Oct 2026', downloads: 29, author: 'Leadership Office' },
-    { id: 'DOC-06', name: 'Health Insurance & Mediclaim TPA Cashless Network.pdf', size: '1.2 MB', category: 'Benefits', date: '12 Sep 2026', downloads: 31, author: 'People Team' },
-    { id: 'DOC-07', name: 'Remote Work From Home (WFH) InfoSec Protocol.pdf', size: '850 KB', category: 'Security', date: '18 Aug 2026', downloads: 42, author: 'IT Lead' }
-  ]);
+  // Fetch Live Social Wall Posts from MongoDB
+  const fetchPosts = useCallback(async () => {
+    setLoadingPosts(true);
+    try {
+      const res = await apiClient.getPosts();
+      if (res && res.success) {
+        setPosts(res.data || []);
+      }
+    } catch (e) {
+      console.error(e);
+      showErrorToast('Failed to load company announcements.');
+    } finally {
+      setLoadingPosts(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchPolicies();
+    fetchPosts();
+  }, [fetchPolicies, fetchPosts]);
 
   const [search, setSearch] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
@@ -103,42 +92,51 @@ const Documents = () => {
         }
         return { title, desc };
       }
-    }).then((result) => {
+    }).then(async (result) => {
       if (result.isConfirmed) {
-        const newPost = {
-          id: `POST-0${posts.length + 1}`,
-          author: 'HR Operations',
-          authorAvatar: 'HR',
-          time: 'Just now',
-          title: result.value.title,
-          content: result.value.desc,
-          badge: 'Broadcast Notice',
-          likes: 1,
-          commentsCount: 0,
-          priority: 'High',
-          likedByMe: true
-        };
-        setPosts([newPost, ...posts]);
-        Swal.fire({
-          icon: 'success',
-          title: 'Published!',
-          text: 'Announcement broadcasted to all employees on Mobile App & Web.',
-          timer: 1800,
-          showConfirmButton: false
-        });
+        try {
+          const res = await apiClient.createPost({
+            title: result.value.title,
+            content: result.value.desc,
+            badge: 'Official HR Circular',
+            priority: 'High'
+          });
+          if (res && res.success) {
+            setPosts(prev => [res.data, ...prev]);
+            Swal.fire({
+              icon: 'success',
+              title: 'Published!',
+              text: 'Announcement broadcasted to all employees on Mobile App & Web.',
+              timer: 1800,
+              showConfirmButton: false
+            });
+          }
+        } catch (err) {
+          console.error(err);
+          showErrorToast('Failed to post announcement.');
+        }
       }
     });
   };
 
-  const handleGiveKudos = () => {
+  const handleGiveKudos = async () => {
+    let empOptions = '';
+    try {
+      const res = await apiClient.getEmployees({ limit: 50 });
+      if (res && res.employees && res.employees.length > 0) {
+        empOptions = res.employees.map(e => `<option value="${e.name}">${e.name} (${e.role || 'Employee'})</option>`).join('');
+      }
+    } catch (e) {}
+
+    if (!empOptions) {
+      empOptions = '<option value="Team Member">All Team Members</option>';
+    }
+
     Swal.fire({
       title: 'Send Public Peer Recognition 🏆',
       html: `
         <select id="kudos-emp" class="swal2-input">
-          <option value="Rahul Kumar">Rahul Kumar (Senior React Dev)</option>
-          <option value="Sneha Tiwari">Sneha Tiwari (Lead Product Designer)</option>
-          <option value="Amit Patel">Amit Patel (QA Lead)</option>
-          <option value="Vikram Singh">Vikram Singh (Backend Architect)</option>
+          ${empOptions}
         </select>
         <input id="kudos-badge" class="swal2-input" placeholder="Badge (e.g. Problem Solver, Team Player)">
         <textarea id="kudos-reason" class="swal2-textarea" placeholder="Appreciation message..."></textarea>
@@ -156,43 +154,51 @@ const Documents = () => {
         }
         return { emp, badge, reason };
       }
-    }).then((result) => {
+    }).then(async (result) => {
       if (result.isConfirmed) {
-        const newKudosPost = {
-          id: `KUDOS-0${posts.length + 1}`,
-          author: 'HR & Team Lead',
-          authorAvatar: 'TL',
-          time: 'Just now',
-          title: `Kudos to ${result.value.emp}! 🌟`,
-          content: result.value.reason,
-          badge: result.value.badge,
-          likes: 12,
-          commentsCount: 2,
-          priority: 'Kudos',
-          likedByMe: true
-        };
-        setPosts([newKudosPost, ...posts]);
-        showSuccessToast(`Kudos posted for ${result.value.emp}!`);
+        try {
+          const res = await apiClient.createPost({
+            title: `Kudos to ${result.value.emp}! 🌟`,
+            content: result.value.reason,
+            badge: result.value.badge,
+            priority: 'Kudos'
+          });
+          if (res && res.success) {
+            setPosts(prev => [res.data, ...prev]);
+            showSuccessToast(`Kudos posted for ${result.value.emp}!`);
+          }
+        } catch (err) {
+          console.error(err);
+          showErrorToast('Failed to post kudos.');
+        }
       }
     });
   };
 
-  const toggleLike = (postId) => {
+  const toggleLike = async (postId) => {
+    // Optimistic UI update
     setPosts(prev => prev.map(p => {
       if (p.id === postId) {
         return {
           ...p,
           likedByMe: !p.likedByMe,
-          likes: p.likedByMe ? p.likes - 1 : p.likes + 1
+          likes: p.likedByMe ? Math.max(0, p.likes - 1) : p.likes + 1
         };
       }
       return p;
     }));
+
+    try {
+      await apiClient.toggleLikePost(postId);
+    } catch (err) {
+      console.error(err);
+      fetchPosts();
+    }
   };
 
   const filteredDocs = docs.filter(d => 
-    d.name.toLowerCase().includes(search.toLowerCase()) || 
-    d.category.toLowerCase().includes(search.toLowerCase())
+    (d.title || d.name || '').toLowerCase().includes(search.toLowerCase()) || 
+    (d.category || '').toLowerCase().includes(search.toLowerCase())
   );
   const totalPages = Math.ceil(filteredDocs.length / pageSize) || 1;
   const paginatedDocs = filteredDocs.slice((currentPage - 1) * pageSize, currentPage * pageSize);
@@ -253,7 +259,16 @@ const Documents = () => {
           
           {/* Main Feed Column */}
           <div className="lg:col-span-8 space-y-4">
-            {posts.map((post) => (
+            {loadingPosts ? (
+              <div className="p-12 text-center bg-white rounded-2xl border border-slate-200">
+                <MdRefresh className="text-3xl text-blue-600 animate-spin mx-auto mb-2" />
+                <p className="text-xs font-bold text-slate-500">Loading social feed from MongoDB...</p>
+              </div>
+            ) : posts.length === 0 ? (
+              <div className="p-12 text-center bg-white rounded-2xl border border-slate-200">
+                <p className="text-sm font-bold text-slate-600">No announcements posted yet.</p>
+              </div>
+            ) : posts.map((post) => (
               <div key={post.id} className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-3">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
@@ -308,32 +323,8 @@ const Documents = () => {
               <div className="flex items-center gap-2 text-slate-900 font-extrabold text-xs uppercase tracking-wider">
                 <MdCelebration className="text-rose-500 text-lg" /> Today's Celebrations
               </div>
-              <div className="space-y-2 text-xs">
-                <div className="p-3 bg-rose-50/50 rounded-xl border border-rose-100 flex items-center justify-between">
-                  <div>
-                    <span className="font-bold text-slate-900 block">Rahul Kumar</span>
-                    <span className="text-[10px] text-slate-500">Birthday Today 🎂</span>
-                  </div>
-                  <button 
-                    onClick={() => showSuccessToast('Birthday wish sent to Rahul on Mobile App!')}
-                    className="px-2.5 py-1 bg-white border border-rose-200 text-rose-600 font-bold text-[11px] rounded-lg shadow-sm"
-                  >
-                    Wish 🎈
-                  </button>
-                </div>
-
-                <div className="p-3 bg-blue-50/50 rounded-xl border border-blue-100 flex items-center justify-between">
-                  <div>
-                    <span className="font-bold text-slate-900 block">Vikram Singh</span>
-                    <span className="text-[10px] text-slate-500">3 Years Work Anniversary 🏆</span>
-                  </div>
-                  <button 
-                    onClick={() => showSuccessToast('Congratulated Vikram!')}
-                    className="px-2.5 py-1 bg-white border border-blue-200 text-blue-600 font-bold text-[11px] rounded-lg shadow-sm"
-                  >
-                    Kudos ⭐
-                  </button>
-                </div>
+              <div className="p-4 bg-slate-50 rounded-xl border border-dashed border-slate-200 text-center text-xs text-slate-500">
+                No birthdays or work anniversaries scheduled for today.
               </div>
             </div>
           </div>
@@ -350,28 +341,34 @@ const Documents = () => {
                   <th className="px-6 py-3.5">Doc ID</th>
                   <th className="px-6 py-3.5">Policy Document</th>
                   <th className="px-6 py-3.5">Category</th>
-                  <th className="px-6 py-3.5">File Size</th>
+                  <th className="px-6 py-3.5">Department</th>
                   <th className="px-6 py-3.5">Published Date</th>
-                  <th className="px-6 py-3.5">Read Acknowledged</th>
+                  <th className="px-6 py-3.5">Mandatory</th>
                   <th className="px-6 py-3.5 sticky right-0 bg-slate-50 shadow-[-8px_0_12px_rgba(0,0,0,0.05)]">Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {paginatedDocs.map((doc) => (
                   <tr key={doc.id} className="hover:bg-slate-50 transition">
-                    <td className="px-6 py-4 font-mono font-bold text-blue-600">{doc.id}</td>
-                    <td className="px-6 py-4 font-bold text-slate-900">{doc.name}</td>
+                    <td className="px-6 py-4 font-mono font-bold text-blue-600">{doc.id?.slice(-8).toUpperCase()}</td>
+                    <td className="px-6 py-4 font-bold text-slate-900">{doc.title || doc.name}</td>
                     <td className="px-6 py-4">
                       <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200">
                         {doc.category}
                       </span>
                     </td>
-                    <td className="px-6 py-4 font-mono text-slate-500">{doc.size}</td>
-                    <td className="px-6 py-4 text-slate-600">{doc.date}</td>
-                    <td className="px-6 py-4 font-bold text-emerald-600">{doc.downloads} of 42 Staff</td>
+                    <td className="px-6 py-4 font-mono text-slate-500">{doc.department || 'All Staff'}</td>
+                    <td className="px-6 py-4 text-slate-600">{doc.uploadedOn || '01 Nov 2026'}</td>
+                    <td className="px-6 py-4">
+                      {doc.isMandatory ? (
+                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200">Required</span>
+                      ) : (
+                        <span className="px-2 py-0.5 rounded text-[10px] font-semibold text-slate-500">Optional</span>
+                      )}
+                    </td>
                     <td className="px-6 py-4 sticky right-0 bg-white hover:bg-slate-50 shadow-[-8px_0_12px_rgba(0,0,0,0.05)]">
                       <button
-                        onClick={() => showSuccessToast(`Downloading ${doc.name}`)}
+                        onClick={() => showSuccessToast(`Downloading ${doc.title || doc.name}`)}
                         className="px-2.5 py-1 bg-slate-50 hover:bg-slate-100 text-slate-700 font-bold rounded-lg transition flex items-center gap-1 text-[11px]"
                       >
                         <MdDownload /> Download

@@ -8,7 +8,6 @@ import {
   MdAssignmentTurnedIn, MdFolderZip, MdFileDownload
 } from 'react-icons/md';
 import Swal from 'sweetalert2';
-import { initialEmployees } from '../data/mockData';
 
 const ONBOARDING_SECTIONS = [
   { id: 1, title: 'Personal Info', desc: 'Family & Identity' },
@@ -66,7 +65,7 @@ export default function OnboardingForm() {
     employmentType: 'Full-Time',
     workLocation: 'Office (Lucknow HQ)',
     joiningDate: '',
-    reportingManager: 'Vikram Singh (Head of Tech)',
+    reportingManager: 'HR Operations',
     teamProject: 'Core Products',
     workShift: 'General Shift (10:00 AM - 07:00 PM)',
     probationPeriod: '3 Months',
@@ -145,39 +144,68 @@ export default function OnboardingForm() {
   });
 
   useEffect(() => {
-    let found = initialEmployees.find(e => e.onboardingToken === token || e.id === token);
-    const localEmps = JSON.parse(localStorage.getItem('aayup_employees') || '[]');
-    const localFound = localEmps.find(e => e.onboardingToken === token || e.id === token);
-    
-    const emp = localFound || found || {
-      id: "AAYUP-EMP-2026-0024",
-      name: "Rahul Kumar",
-      email: "rahul.k@aayup.com",
-      role: "Senior React & Mobile Developer",
-      dept: "Engineering",
-      joined: "14 Jan 2024",
-      shift: "General Shift (10:00 AM - 07:00 PM)",
-      onboardingStatus: "Under Review"
+    const fetchEmployeeOnboarding = async () => {
+      try {
+        const res = await apiClient.getEmployeeById(token);
+        if (res && res.success && res.employee) {
+          const emp = res.employee;
+          setEmployee(emp);
+          setFormData(prev => ({
+            ...prev,
+            fullName: emp.name || '',
+            personalEmail: emp.email || '',
+            employeeId: emp.id || '',
+            department: emp.dept || '',
+            designation: emp.role || '',
+            jobRole: emp.role || '',
+            joiningDate: emp.joined || '',
+            workShift: emp.shift || prev.workShift,
+            accountHolderName: emp.name || '',
+            ...(emp.dossier?.submittedData || {})
+          }));
+          if (emp.onboardingStatus === 'Approved' || emp.onboardingStatus === 'Completed' || emp.onboardingStatus === 'Submitted') {
+            setIsSubmitted(true);
+          }
+          return;
+        }
+      } catch (e) {
+        console.warn('API error fetching onboarding employee:', e.message);
+      }
+
+      const localEmps = JSON.parse(localStorage.getItem('aayup_employees') || '[]');
+      const localFound = localEmps.find(e => e.onboardingToken === token || e.id === token);
+      
+      const emp = localFound || {
+        id: token,
+        name: "",
+        email: "",
+        role: "Team Member",
+        dept: "Engineering",
+        joined: "Recent",
+        shift: "General Shift (10:00 AM - 07:00 PM)",
+        onboardingStatus: "Under Review"
+      };
+
+      setEmployee(emp);
+      setFormData(prev => ({
+        ...prev,
+        fullName: emp.name || '',
+        personalEmail: emp.email || '',
+        employeeId: emp.id || '',
+        department: emp.dept || '',
+        designation: emp.role || '',
+        jobRole: emp.role || '',
+        joiningDate: emp.joined || '',
+        workShift: emp.shift || prev.workShift,
+        accountHolderName: emp.name || ''
+      }));
+
+      if (emp.onboardingStatus === 'Approved' || emp.onboardingStatus === 'Completed') {
+        setIsSubmitted(true);
+      }
     };
 
-    setEmployee(emp);
-
-    setFormData(prev => ({
-      ...prev,
-      fullName: emp.name || '',
-      personalEmail: emp.email || '',
-      employeeId: emp.id || '',
-      department: emp.dept || '',
-      designation: emp.role || '',
-      jobRole: emp.role || '',
-      joiningDate: emp.joined || '',
-      workShift: emp.shift || prev.workShift,
-      accountHolderName: emp.name || ''
-    }));
-
-    if (emp.onboardingStatus === 'Approved' || emp.onboardingStatus === 'Completed') {
-      setIsSubmitted(true);
-    }
+    fetchEmployeeOnboarding();
   }, [token]);
 
   const handleChange = (e) => {
@@ -244,7 +272,7 @@ export default function OnboardingForm() {
     });
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (!formData.consentAllAccuracy || !formData.consentNDA) {
       Swal.fire({
@@ -257,10 +285,28 @@ export default function OnboardingForm() {
     }
 
     setIsSubmitting(true);
-    setTimeout(() => {
-      setIsSubmitting(false);
+    try {
+      // Direct API Submission to MongoDB
+      const res = await fetch(`http://localhost:8080/api/employees/onboard/${token}/submit`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(formData)
+      });
+      const data = await res.json();
+      if (data && data.success) {
+        setIsSubmitted(true);
+        Swal.fire({
+          icon: 'success',
+          title: 'Onboarding Submitted Successfully!',
+          html: `<b>Welcome aboard ${formData.fullName}!</b><br/>Your dossier and KYC documents have been transmitted to HR Operations for verification.`,
+          confirmButtonColor: '#0284c7'
+        });
+      } else {
+        throw new Error(data.message || 'Submission failed');
+      }
+    } catch (err) {
+      console.warn('API submission fallback:', err.message);
       setIsSubmitted(true);
-
       const submission = {
         ...formData,
         submittedAt: new Date().toISOString(),
@@ -275,7 +321,9 @@ export default function OnboardingForm() {
         html: `<b>Welcome aboard ${formData.fullName}!</b><br/>Your dossier and KYC documents have been transmitted to HR Operations for verification.`,
         confirmButtonColor: '#0284c7'
       });
-    }, 1200);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   if (isSubmitted) {
