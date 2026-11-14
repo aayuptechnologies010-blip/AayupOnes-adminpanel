@@ -2,6 +2,7 @@ import React, { lazy } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import MainLayout from './components/MainLayout';
 import Login from './pages/Login';
+import { ProtectedRoute, PublicRoute } from './components/ProtectedRoute';
 
 const Dashboard = lazy(() => import('./pages/Dashboard'));
 const Employees = lazy(() => import('./pages/Employees'));
@@ -21,23 +22,34 @@ const Settings = lazy(() => import('./pages/Settings'));
 function App() {
   return (
     <Routes>
-      <Route path="/login" element={<Login />} />
+      {/* Public Login Route - Redirects to / if already logged in */}
+      <Route
+        path="/login"
+        element={
+          <PublicRoute>
+            <Login />
+          </PublicRoute>
+        }
+      />
       <Route path="/onboard/:token" element={<OnboardingForm />} />
 
-      <Route element={<MainLayout />}>
-        <Route path="/" element={<Dashboard />} />
-        <Route path="/employees" element={<Employees />} />
-        <Route path="/employees/:id" element={<EmployeeDetails />} />
-        <Route path="/approvals" element={<Approvals />} />
-        <Route path="/attendance" element={<Attendance />} />
-        <Route path="/payroll" element={<Payroll />} />
-        <Route path="/payslips" element={<Payslips />} />
-        <Route path="/reimbursements" element={<Reimbursements />} />
-        <Route path="/documents" element={<Documents />} />
-        <Route path="/helpdesk" element={<Helpdesk />} />
-        <Route path="/announcements" element={<Announcements />} />
-        <Route path="/profile" element={<Profile />} />
-        <Route path="/settings" element={<Settings />} />
+      {/* Protected Routes - Redirect to /login if token not present */}
+      <Route element={<ProtectedRoute />}>
+        <Route element={<MainLayout />}>
+          <Route path="/" element={<Dashboard />} />
+          <Route path="/employees" element={<Employees />} />
+          <Route path="/employees/:id" element={<EmployeeDetails />} />
+          <Route path="/approvals" element={<Approvals />} />
+          <Route path="/attendance" element={<Attendance />} />
+          <Route path="/payroll" element={<Payroll />} />
+          <Route path="/payslips" element={<Payslips />} />
+          <Route path="/reimbursements" element={<Reimbursements />} />
+          <Route path="/documents" element={<Documents />} />
+          <Route path="/helpdesk" element={<Helpdesk />} />
+          <Route path="/announcements" element={<Announcements />} />
+          <Route path="/profile" element={<Profile />} />
+          <Route path="/settings" element={<Settings />} />
+        </Route>
       </Route>
 
       <Route path="*" element={<Navigate to="/" replace />} />
