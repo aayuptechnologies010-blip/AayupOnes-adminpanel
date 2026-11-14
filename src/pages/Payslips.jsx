@@ -110,34 +110,112 @@ const Payslips = () => {
     showSuccessToast('Payslips ledger exported to Excel successfully!');
   };
 
-  const handleBroadcastToApp = (emp) => {
+  const handleBroadcastToApp = async (emp, options = { toApp: true, toEmail: true }) => {
+    try {
+      const res = await apiClient.sendPayslip({
+        id: emp.id,
+        sendToApp: options.toApp,
+        sendToEmail: options.toEmail
+      });
+      if (res && res.success) {
+        showSuccessToast(res.message || 'Payslip dispatched successfully!');
+        fetchPayslips();
+      } else {
+        showErrorToast(res?.message || 'Failed to dispatch payslip');
+      }
+    } catch (err) {
+      showErrorToast('Error dispatching payslip: ' + err.message);
+    }
+  };
+
+  const handleOpenSendModal = (emp) => {
     Swal.fire({
-      icon: 'success',
-      title: 'Dispatched to Mobile App!',
-      html: `Payslip for <b>${selectedMonth}</b> pushed to <b>${emp.name}</b>'s mobile account. Push notification sent.`,
-      timer: 1800,
-      showConfirmButton: false
+      title: `Send Payslip to ${emp.empName}`,
+      html: `
+        <div style="text-align: left; font-size: 13px; color: #475569;">
+          <p style="margin-bottom: 12px;">Choose delivery channels for <b>${emp.month}</b> payslip:</p>
+          <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px; cursor: pointer;">
+            <input type="checkbox" id="swalSendApp" checked style="width: 16px; height: 16px; accent-color: #2563eb;" />
+            <span><strong>Send to Mobile App</strong> (Push Notification + In-App View)</span>
+          </label>
+          <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+            <input type="checkbox" id="swalSendEmail" checked style="width: 16px; height: 16px; accent-color: #2563eb;" />
+            <span><strong>Send to Email</strong> (${emp.email || 'Registered Employee Email'})</span>
+          </label>
+        </div>
+      `,
+      showCancelButton: true,
+      confirmButtonText: 'Send Payslip Now',
+      cancelButtonText: 'Cancel',
+      confirmButtonColor: '#2563eb',
+      preConfirm: () => {
+        const toApp = document.getElementById('swalSendApp').checked;
+        const toEmail = document.getElementById('swalSendEmail').checked;
+        if (!toApp && !toEmail) {
+          Swal.showValidationMessage('Please select at least one delivery channel.');
+          return false;
+        }
+        return { toApp, toEmail };
+      }
+    }).then((result) => {
+      if (result.isConfirmed) {
+        handleBroadcastToApp(emp, result.value);
+      }
     });
   };
 
   const handleBulkBroadcast = () => {
     Swal.fire({
-      title: `Publish & Broadcast All ${filtered.length} Payslips?`,
-      text: `This will push password-protected ${selectedMonth} payslips directly to all employee mobile apps and emails.`,
-      icon: 'question',
+      title: `Dispatch All ${filtered.length} Payslips?`,
+      html: `
+        <div style="text-align: left; font-size: 13px; color: #475569;">
+          <p style="margin-bottom: 12px;">This will publish and send <b>${selectedMonth}</b> payslips to all employees:</p>
+          <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px; cursor: pointer;">
+            <input type="checkbox" id="swalBulkApp" checked style="width: 16px; height: 16px; accent-color: #2563eb;" />
+            <span><strong>Publish to Mobile App</strong> (Push alerts to all devices)</span>
+          </label>
+          <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+            <input type="checkbox" id="swalBulkEmail" checked style="width: 16px; height: 16px; accent-color: #2563eb;" />
+            <span><strong>Send via Official Email</strong> (HTML salary advice to all inboxes)</span>
+          </label>
+        </div>
+      `,
       showCancelButton: true,
       confirmButtonColor: '#0066d6',
       cancelButtonColor: '#94a3b8',
-      confirmButtonText: 'Yes, Publish to Mobile App & Email'
-    }).then((result) => {
+      confirmButtonText: 'Yes, Dispatch to All Staff',
+      preConfirm: () => {
+        const toApp = document.getElementById('swalBulkApp').checked;
+        const toEmail = document.getElementById('swalBulkEmail').checked;
+        if (!toApp && !toEmail) {
+          Swal.showValidationMessage('Please select at least one channel.');
+          return false;
+        }
+        return { toApp, toEmail };
+      }
+    }).then(async (result) => {
       if (result.isConfirmed) {
-        Swal.fire({
-          icon: 'success',
-          title: 'Batch Distributed!',
-          text: `All 42 active employee vouchers for ${selectedMonth} are now live on the mobile apps.`,
-          timer: 2000,
-          showConfirmButton: false
-        });
+        try {
+          const res = await apiClient.sendBulkPayslips({
+            month: selectedMonth,
+            sendToApp: result.value.toApp,
+            sendToEmail: result.value.toEmail
+          });
+          if (res && res.success) {
+            Swal.fire({
+              icon: 'success',
+              title: 'Batch Distributed!',
+              text: res.message || 'All payslips dispatched successfully.',
+              timer: 2200,
+              showConfirmButton: false
+            });
+            fetchPayslips();
+          } else {
+            showErrorToast(res?.message || 'Failed to dispatch bulk payslips');
+          }
+        } catch (err) {
+          showErrorToast('Bulk dispatch error: ' + err.message);
+        }
       }
     });
   };
@@ -290,12 +368,24 @@ const Payslips = () => {
                     <td className="px-6 py-4 font-mono text-rose-600 font-bold">- ₹ {Number(emp.totalDeductions).toLocaleString('en-IN')}</td>
                     <td className="px-6 py-4 font-mono font-black text-emerald-600">₹ {Number(emp.netSalary).toLocaleString('en-IN')}</td>
                     <td className="px-6 py-4">
-                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1 w-fit">
-                        <MdCheckCircle className="text-xs" /> Pushed to App
-                      </span>
+                      <div className="flex flex-col gap-1">
+                        <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border flex items-center gap-1 w-fit ${emp.sentToApp ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-slate-50 text-slate-500 border-slate-200'}`}>
+                          <MdCheckCircle className="text-xs" /> {emp.sentToApp ? 'App: Delivered' : 'App: Pending'}
+                        </span>
+                        <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border flex items-center gap-1 w-fit ${emp.sentViaEmail ? 'bg-blue-50 text-blue-700 border-blue-200' : 'bg-slate-50 text-slate-500 border-slate-200'}`}>
+                          <MdEmail className="text-xs" /> {emp.sentViaEmail ? 'Email: Sent' : 'Email: Not sent'}
+                        </span>
+                      </div>
                     </td>
                     <td className="px-6 py-4 sticky right-0 bg-white hover:bg-slate-50 shadow-[-8px_0_12px_rgba(0,0,0,0.05)]">
                       <div className="flex items-center gap-1.5">
+                        <button
+                          onClick={() => handleOpenSendModal(emp)}
+                          className="px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold rounded-lg transition flex items-center gap-1 text-[11px]"
+                          title="Send to Mobile App and/or Email"
+                        >
+                          <MdSend /> Send
+                        </button>
                         <button
                           onClick={() => setSelectedPayslip(emp)}
                           className="px-2.5 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold rounded-lg transition flex items-center gap-1 text-[11px]"

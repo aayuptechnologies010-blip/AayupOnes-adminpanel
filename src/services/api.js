@@ -173,6 +173,20 @@ export const apiClient = {
     return this.request(`/payslips${query ? `?${query}` : ''}`);
   },
 
+  async sendPayslip(payload) {
+    return this.request('/payslips/send', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async sendBulkPayslips(payload) {
+    return this.request('/payslips/send-bulk', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+
   // Reimbursements APIs
   async getReimbursements(params = {}) {
     const query = new URLSearchParams(params).toString();
@@ -195,6 +209,19 @@ export const apiClient = {
   // Operations & Helpdesk & Settings APIs
   async getDocumentsList() {
     return this.request('/operations/documents-list');
+  },
+
+  async issueEmployeeDocument(payload) {
+    return this.request('/operations/documents/issue', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async deleteDocument(id) {
+    return this.request(`/operations/documents/${id}`, {
+      method: 'DELETE',
+    });
   },
 
   async getHelpdeskTickets() {

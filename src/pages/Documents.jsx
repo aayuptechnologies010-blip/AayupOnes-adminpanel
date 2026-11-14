@@ -19,18 +19,23 @@ import {
   MdComment,
   MdNotificationsActive,
   MdAddCircleOutline,
-  MdRefresh
+  MdRefresh,
+  MdEmail,
+  MdCheckCircle,
+  MdDescription,
+  MdWorkOutline
 } from 'react-icons/md';
 import { showSuccessToast, showErrorToast } from '../utils/alerts';
 import Swal from 'sweetalert2';
 import apiClient from '../services/api';
 
 const Documents = () => {
-  const [activeTab, setActiveTab] = useState('feed'); // 'feed' | 'docs' | 'kudos'
+  const [activeTab, setActiveTab] = useState('issued'); // 'issued' | 'feed' | 'docs'
   const [docs, setDocs] = useState([]);
   const [loadingDocs, setLoadingDocs] = useState(false);
   const [posts, setPosts] = useState([]);
   const [loadingPosts, setLoadingPosts] = useState(false);
+  const [employeesList, setEmployeesList] = useState([]);
 
   // Fetch Live Corporate Policies from MongoDB
   const fetchPolicies = useCallback(async () => {
@@ -64,14 +69,167 @@ const Documents = () => {
     }
   }, []);
 
+  // Fetch Live Employees
+  const fetchEmployees = useCallback(async () => {
+    try {
+      const res = await apiClient.getEmployees({ limit: 100 });
+      if (res && res.employees) {
+        setEmployeesList(res.employees);
+      }
+    } catch (_) {}
+  }, []);
+
   useEffect(() => {
     fetchPolicies();
     fetchPosts();
-  }, [fetchPolicies, fetchPosts]);
+    fetchEmployees();
+  }, [fetchPolicies, fetchPosts, fetchEmployees]);
 
   const [search, setSearch] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
-  const pageSize = 5;
+  const pageSize = 10;
+
+  const handleIssueDocumentModal = () => {
+    const empOptions = employeesList.length > 0
+      ? employeesList.map(e => `<option value="${e.employeeId || e.empId}">${e.name || e.fullName} (${e.employeeId || e.empId})</option>`).join('')
+      : '<option value="AAYUP-EMP-2026-6359">Mayank Pandey (AAYUP-EMP-2026-6359)</option>';
+
+    Swal.fire({
+      title: 'Issue & Send Employee Document',
+      width: '600px',
+      html: `
+        <div style="text-align: left; font-size: 13px; color: #334155;">
+          <div style="margin-bottom: 12px;">
+            <label style="font-weight: 700; display: block; margin-bottom: 4px;">Select Employee:</label>
+            <select id="doc-emp-id" class="swal2-input" style="width: 100%; margin: 0; font-size: 13px;">
+              ${empOptions}
+            </select>
+          </div>
+
+          <div style="margin-bottom: 12px;">
+            <label style="font-weight: 700; display: block; margin-bottom: 4px;">Document Type:</label>
+            <select id="doc-category" class="swal2-input" style="width: 100%; margin: 0; font-size: 13px;">
+              <option value="Offer Letter">Offer Letter</option>
+              <option value="Joining Letter">Joining Letter / Appointment</option>
+              <option value="Experience Letter">Experience / Relieving Letter</option>
+              <option value="Appraisal Letter">Salary Revision / Appraisal Letter</option>
+              <option value="Company Policy">Company Policy Document</option>
+            </select>
+          </div>
+
+          <div style="margin-bottom: 12px;">
+            <label style="font-weight: 700; display: block; margin-bottom: 4px;">Document Title:</label>
+            <input id="doc-title" class="swal2-input" placeholder="e.g. Official Offer Letter - Software Engineer" style="width: 100%; margin: 0; font-size: 13px;" />
+          </div>
+
+          <div style="margin-bottom: 14px;">
+            <label style="font-weight: 700; display: block; margin-bottom: 4px;">Upload Document (PDF / Image / DOCX):</label>
+            <input id="doc-file" type="file" accept=".pdf,.doc,.docx,.png,.jpg,.jpeg" style="width: 100%; font-size: 12px; border: 1px dashed #cbd5e1; padding: 10px; border-radius: 8px; background: #f8fafc;" />
+          </div>
+
+          <div style="margin-bottom: 14px;">
+            <label style="font-weight: 700; display: block; margin-bottom: 4px;">Remarks / Note (Optional):</label>
+            <textarea id="doc-remarks" class="swal2-textarea" placeholder="Note to employee..." style="width: 100%; margin: 0; font-size: 12px; height: 60px;"></textarea>
+          </div>
+
+          <div style="background: #f1f5f9; padding: 12px; border-radius: 10px; border: 1px solid #e2e8f0;">
+            <div style="font-weight: 700; margin-bottom: 8px; font-size: 12px; color: #1e293b;">Delivery Channels:</div>
+            <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px; cursor: pointer;">
+              <input type="checkbox" id="doc-send-app" checked style="width: 16px; height: 16px; accent-color: #2563eb;" />
+              <span><strong>Send to Employee Mobile App</strong> (Direct download + Push Notification)</span>
+            </label>
+            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+              <input type="checkbox" id="doc-send-email" checked style="width: 16px; height: 16px; accent-color: #2563eb;" />
+              <span><strong>Send to Employee Email</strong> (Official Email notification with download)</span>
+            </label>
+          </div>
+        </div>
+      `,
+      showCancelButton: true,
+      confirmButtonColor: '#2563eb',
+      cancelButtonColor: '#94a3b8',
+      confirmButtonText: 'Upload & Issue Document',
+      preConfirm: async () => {
+        const empId = document.getElementById('doc-emp-id').value;
+        const category = document.getElementById('doc-category').value;
+        const title = document.getElementById('doc-title').value.trim();
+        const remarks = document.getElementById('doc-remarks').value.trim();
+        const sendToApp = document.getElementById('doc-send-app').checked;
+        const sendToEmail = document.getElementById('doc-send-email').checked;
+        const fileInput = document.getElementById('doc-file');
+
+        if (!title) {
+          Swal.showValidationMessage('Please provide a document title.');
+          return false;
+        }
+
+        let fileBase64 = '';
+        let fileName = '';
+        if (fileInput.files && fileInput.files[0]) {
+          const file = fileInput.files[0];
+          fileName = file.name;
+          fileBase64 = await new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onload = (e) => resolve(e.target.result);
+            reader.readAsDataURL(file);
+          });
+        }
+
+        return {
+          employeeId: empId,
+          category,
+          title,
+          fileName: fileName || `${category.replace(/\s+/g, '_')}.pdf`,
+          fileBase64,
+          remarks,
+          sendToApp,
+          sendToEmail
+        };
+      }
+    }).then(async (result) => {
+      if (result.isConfirmed) {
+        try {
+          const res = await apiClient.issueEmployeeDocument(result.value);
+          if (res && res.success) {
+            Swal.fire({
+              icon: 'success',
+              title: 'Document Issued!',
+              text: res.message || 'Document sent to employee successfully.',
+              timer: 2000,
+              showConfirmButton: false
+            });
+            fetchPolicies();
+          } else {
+            showErrorToast(res?.message || 'Failed to issue document.');
+          }
+        } catch (err) {
+          showErrorToast('Error issuing document: ' + err.message);
+        }
+      }
+    });
+  };
+
+  const handleDeleteDoc = (doc) => {
+    Swal.fire({
+      title: `Delete ${doc.title}?`,
+      text: 'This will remove the document from employee records.',
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonColor: '#ef4444',
+      cancelButtonColor: '#94a3b8',
+      confirmButtonText: 'Yes, delete it'
+    }).then(async (res) => {
+      if (res.isConfirmed) {
+        try {
+          await apiClient.deleteDocument(doc.id);
+          showSuccessToast('Document deleted successfully');
+          fetchPolicies();
+        } catch (err) {
+          showErrorToast('Failed to delete: ' + err.message);
+        }
+      }
+    });
+  };
 
   const handleCreateAnnouncement = () => {
     Swal.fire({
@@ -213,6 +371,13 @@ const Documents = () => {
         </div>
         <div className="flex items-center gap-2">
           <button
+            onClick={handleIssueDocumentModal}
+            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition shadow-sm flex items-center gap-1.5"
+          >
+            <MdUploadFile className="text-base" />
+            <span>Issue Letter / Document</span>
+          </button>
+          <button
             onClick={handleGiveKudos}
             className="px-4 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-xl text-xs font-bold transition flex items-center gap-1.5"
           >
@@ -221,16 +386,26 @@ const Documents = () => {
           </button>
           <button
             onClick={handleCreateAnnouncement}
-            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition shadow-sm flex items-center gap-1.5"
+            className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl text-xs font-bold transition shadow-sm flex items-center gap-1.5"
           >
-            <MdCampaign className="text-base" />
-            <span>Post Announcement</span>
+            <MdCampaign className="text-base text-blue-600" />
+            <span>Post Circular</span>
           </button>
         </div>
       </div>
 
-      {/* Tabs Switcher: Social Feed vs Corporate Policies */}
+      {/* Tabs Switcher: Issued Letters vs Social Feed vs Corporate Policies */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-1.5 flex items-center gap-1">
+        <button
+          onClick={() => setActiveTab('issued')}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition ${
+            activeTab === 'issued'
+              ? 'bg-blue-600 text-white shadow-sm shadow-blue-500/20'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+          }`}
+        >
+          <MdDescription className="text-base" /> Issued Employee Documents ({docs.length})
+        </button>
         <button
           onClick={() => setActiveTab('feed')}
           className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition ${
@@ -239,7 +414,7 @@ const Documents = () => {
               : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
           }`}
         >
-          <MdCampaign className="text-base" /> Company Feed & Kudos Wall ({posts.length})
+          <MdCampaign className="text-base" /> Company Feed & Kudos ({posts.length})
         </button>
         <button
           onClick={() => setActiveTab('docs')}
@@ -249,9 +424,100 @@ const Documents = () => {
               : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
           }`}
         >
-          <MdFolderCopy className="text-base" /> Corporate Policy Repository ({docs.length})
+          <MdFolderCopy className="text-base" /> Policy Repository
         </button>
       </div>
+
+      {/* TAB 0: ISSUED LETTERS & DOCUMENTS (Offer, Joining, Appraisal, Experience) */}
+      {activeTab === 'issued' && (
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+          <div className="p-4 border-b border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-3">
+            <div className="text-xs font-bold text-slate-800">
+              All Letters & Documents Sent to Staff
+            </div>
+            <button
+              onClick={handleIssueDocumentModal}
+              className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5"
+            >
+              <MdUploadFile /> Issue New Document
+            </button>
+          </div>
+
+          <div className="overflow-x-auto whitespace-nowrap scrollbar-thin">
+            <table className="w-full text-left text-xs text-slate-600">
+              <thead className="bg-slate-50 text-slate-700 uppercase font-extrabold tracking-wider border-b border-slate-200">
+                <tr>
+                  <th className="px-6 py-3.5">Employee ID</th>
+                  <th className="px-6 py-3.5">Staff Name</th>
+                  <th className="px-6 py-3.5">Document Title</th>
+                  <th className="px-6 py-3.5">Type</th>
+                  <th className="px-6 py-3.5">Issued Date</th>
+                  <th className="px-6 py-3.5">Dispatch Channels</th>
+                  <th className="px-6 py-3.5 sticky right-0 bg-slate-50 shadow-[-8px_0_12px_rgba(0,0,0,0.05)]">Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {docs.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="px-6 py-12 text-center text-slate-400">
+                      No documents issued yet. Click "Issue New Document" to send Offer Letters, Joining Letters, or Relieving Letters.
+                    </td>
+                  </tr>
+                ) : (
+                  docs.map((d) => (
+                    <tr key={d.id} className="hover:bg-slate-50 transition">
+                      <td className="px-6 py-4 font-mono font-bold text-blue-600">{d.employeeId}</td>
+                      <td className="px-6 py-4 font-bold text-slate-900">{d.employeeName || 'Team Member'}</td>
+                      <td className="px-6 py-4 font-semibold text-slate-800 flex items-center gap-2">
+                        <MdDescription className="text-blue-600 text-base flex-shrink-0" />
+                        <span>{d.title}</span>
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                          {d.category}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 text-slate-600">{d.uploadedOn}</td>
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-1.5">
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold border flex items-center gap-1 ${d.sentToApp ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-slate-50 text-slate-400'}`}>
+                            <MdCheckCircle className="text-xs" /> App
+                          </span>
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold border flex items-center gap-1 ${d.sentViaEmail ? 'bg-blue-50 text-blue-700 border-blue-200' : 'bg-slate-50 text-slate-400'}`}>
+                            <MdEmail className="text-xs" /> Email
+                          </span>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 sticky right-0 bg-white hover:bg-slate-50 shadow-[-8px_0_12px_rgba(0,0,0,0.05)]">
+                        <div className="flex items-center gap-1.5">
+                          {d.fileUrl && d.fileUrl !== '#' && (
+                            <a
+                              href={d.fileUrl}
+                              download={d.fileName || 'document.pdf'}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="px-2.5 py-1 bg-slate-50 hover:bg-slate-100 text-slate-700 font-bold rounded-lg transition flex items-center gap-1 text-[11px]"
+                            >
+                              <MdDownload /> Download
+                            </a>
+                          )}
+                          <button
+                            onClick={() => handleDeleteDoc(d)}
+                            className="p-1 hover:bg-rose-50 text-rose-500 rounded-lg transition"
+                            title="Delete"
+                          >
+                            <MdDeleteOutline className="text-base" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {/* TAB 1: SOCIAL WALL & ANNOUNCEMENTS */}
       {activeTab === 'feed' && (
